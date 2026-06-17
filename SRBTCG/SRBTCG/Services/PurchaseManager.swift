@@ -1,0 +1,239 @@
+//
+//  PurchaseManager.swift
+//  SRBTCG
+//
+//  アプリ内課金管理（iOS StoreKit2対応）
+//
+
+import SwiftUI
+import StoreKit
+import Combine
+
+/// 購入結果
+enum PurchaseResult {
+    case success
+    case cancelled
+    case pending
+    case error(String)
+    case alreadyOwned
+    case productNotFound
+    case networkError
+}
+
+/// アプリ内課金管理クラス（iOS StoreKit2連携）
+@MainActor
+class PurchaseManager: ObservableObject {
+    static let shared = PurchaseManager()
+    
+    // --- 商品ID（App Store Connectで設定する） ---
+    static let productSttExport = "stt_export"         // ¥160
+    static let productAdFree = "ad_free"               // ¥320
+    static let productPremiumBundle = "premium_bundle" // ¥400
+    
+    // --- 状態管理 ---
+    @Published var purchasedProducts = Set<String>()
+    @Published var isLoading = false
+    @Published var products: [Product] = []
+    
+    private var updateListenerTask: Task<Void, Error>?
+    
+    // --- SharedPreferencesキー（オフライン時のキャッシュ用） ---
+    private let cachePrefix = "purchase_cache_"
+    
+    private init() {
+        updateListenerTask = listenForTransactions()
+        
+        Task {
+            await loadProducts()
+            await updatePurchasedProducts()
+        }
+    }
+    
+    deinit {
+        updateListenerTask?.cancel()
+    }
+    
+    /// 商品情報を読み込む
+    func loadProducts() async {
+        do {
+            let productIds = [
+                Self.productSttExport,
+                Self.productAdFree,
+                Self.productPremiumBundle
+            ]
+            
+            products = try await Product.products(for: productIds)
+            print("Loaded \(products.count) products")
+        } catch {
+            print("Failed to load products: \(error)")
+        }
+    }
+    
+    /// 購入処理
+    func purchase(_ productId: String) async -> PurchaseResult {
+        guard let product = products.first(where: { $0.id == productId }) else {
+            return .productNotFound
+        }
+        
+        // 既に購入済みかチェック
+        if await hasPurchased(productId) {
+            return .alreadyOwned
+        }
+        
+        isLoading = true
+        defer { isLoading = false }
+        
+        do {
+            let result = try await product.purchase()
+            
+            switch result {
+            case .success(let verification):
+                // 購入検証
+                let transaction = try checkVerified(verification)
+                
+                // 購入を完了
+                await transaction.finish()
+                
+                // 購入済み商品を更新
+                await updatePurchasedProducts()
+                
+                return .success
+                
+            case .userCancelled:
+                return .cancelled
+                
+            case .pending:
+                return .pending
+                
+            @unknown default:
+                return .error("Unknown purchase result")
+            }
+        } catch {
+            return .error(error.localizedDescription)
+        }
+    }
+    
+    /// 購入復元
+    func restorePurchases() async -> PurchaseResult {
+        isLoading = true
+        defer { isLoading = false }
+        
+        do {
+            try await AppStore.sync()
+            await updatePurchasedProducts()
+            
+            if purchasedProducts.isEmpty {
+                return .error(AppStrings.shared.purchaseRestoreNotFound)
+            }
+            
+            return .success
+        } catch {
+            return .error(error.localizedDescription)
+        }
+    }
+    
+    /// 特定商品を購入済みか確認
+    func hasPurchased(_ productId: String) async -> Bool {
+        // メモリキャッシュをチェック
+        if purchasedProducts.contains(productId) {
+            return true
+        }
+        
+        // StoreKitに問い合わせ
+        await updatePurchasedProducts()
+        return purchasedProducts.contains(productId)
+    }
+    
+    /// STT+Export購入済みか（バンドル購入も含む）
+    func hasSttExport() async -> Bool {
+        let hasStt = await hasPurchased(Self.productSttExport)
+        let hasBundle = await hasPurchased(Self.productPremiumBundle)
+        return hasStt || hasBundle
+    }
+    
+    /// 広告非表示購入済みか（バンドル購入も含む）
+    func hasAdFree() async -> Bool {
+        let hasAdFree = await hasPurchased(Self.productAdFree)
+        let hasBundle = await hasPurchased(Self.productPremiumBundle)
+        return hasAdFree || hasBundle
+    }
+    
+    /// プレミアムバンドル購入済みか
+    func hasPremiumBundle() async -> Bool {
+        await hasPurchased(Self.productPremiumBundle)
+    }
+    
+    // MARK: - Private Methods
+    
+    /// トランザクションの監視
+    private func listenForTransactions() -> Task<Void, Error> {
+        return Task.detached {
+            // 未完了のトランザクションを監視
+            for await result in Transaction.updates {
+                do {
+                    let transaction = try await self.checkVerified(result)
+                    
+                    // 購入済み商品を更新
+                    await self.updatePurchasedProducts()
+                    
+                    // トランザクションを完了
+                    await transaction.finish()
+                } catch {
+                    print("Transaction verification failed: \(error)")
+                }
+            }
+        }
+    }
+    
+    /// トランザクションの検証
+    private func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {
+        switch result {
+        case .unverified:
+            throw PurchaseError.verificationFailed
+        case .verified(let safe):
+            return safe
+        }
+    }
+    
+    /// 購入済み商品を更新
+    @MainActor
+    private func updatePurchasedProducts() async {
+        var purchased = Set<String>()
+        
+        // 現在の購入履歴を確認
+        for await result in Transaction.currentEntitlements {
+            do {
+                let transaction = try checkVerified(result)
+                purchased.insert(transaction.productID)
+            } catch {
+                print("Transaction verification failed: \(error)")
+            }
+        }
+        
+        purchasedProducts = purchased
+        
+        // キャッシュに保存
+        for productId in purchased {
+            savePurchaseCache(productId, purchased: true)
+        }
+    }
+    
+    /// キャッシュに保存
+    private func savePurchaseCache(_ productId: String, purchased: Bool) {
+        UserDefaults.standard.set(purchased, forKey: "\(cachePrefix)\(productId)")
+    }
+    
+    /// キャッシュから読み込み
+    private func loadPurchaseCache() {
+        for productId in [Self.productSttExport, Self.productAdFree, Self.productPremiumBundle] {
+            if UserDefaults.standard.bool(forKey: "\(cachePrefix)\(productId)") {
+                purchasedProducts.insert(productId)
+            }
+        }
+    }
+}
+
+/// 購入エラー
+enum PurchaseError: Error {
+    case verificationFailed
+}

@@ -1,0 +1,8 @@
+/* Localized versions of Info.plist keys - Korean */
+
+"CFBundleDisplayName" = "SR 가이드";
+"CFBundleName" = "SR 가이드";
+
+/* Permission descriptions */
+"NSMicrophoneUsageDescription" = "음성 인식(STT) 기능을 사용하여 웨이브별 지시를 기록하기 위해 마이크 액세스가 필요합니다.";
+"NSSpeechRecognitionUsageDescription" = "음성을 텍스트로 변환하여 웨이브별 지시를 자동으로 기록하기 위해 음성 인식이 필요합니다.";

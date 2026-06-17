@@ -1,0 +1,8 @@
+/* Localized versions of Info.plist keys - Chinese (Simplified) */
+
+"CFBundleDisplayName" = "SR指南";
+"CFBundleName" = "SR指南";
+
+/* Permission descriptions */
+"NSMicrophoneUsageDescription" = "需要麦克风访问权限以使用语音识别(STT)功能记录每个Wave的指示。";
+"NSSpeechRecognitionUsageDescription" = "需要语音识别权限以将语音转换为文本并自动记录每个Wave的指示。";

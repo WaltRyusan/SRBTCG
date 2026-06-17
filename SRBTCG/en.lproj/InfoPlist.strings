@@ -1,0 +1,8 @@
+/* Localized versions of Info.plist keys - English */
+
+"CFBundleDisplayName" = "SR Guide";
+"CFBundleName" = "SR Guide";
+
+/* Permission descriptions */
+"NSMicrophoneUsageDescription" = "Microphone access is required to record Wave-specific instructions using speech recognition (STT) functionality.";
+"NSSpeechRecognitionUsageDescription" = "Speech recognition is required to automatically record Wave-specific instructions by converting speech to text.";

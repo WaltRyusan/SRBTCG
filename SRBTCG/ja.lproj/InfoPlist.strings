@@ -1,0 +1,8 @@
+/* Localized versions of Info.plist keys - Japanese */
+
+"CFBundleDisplayName" = "サモランガイド";
+"CFBundleName" = "サモランガイド";
+
+/* Permission descriptions */
+"NSMicrophoneUsageDescription" = "音声認識（STT）機能を使用してWaveごとの指示を記録するためにマイクへのアクセスが必要です。";
+"NSSpeechRecognitionUsageDescription" = "音声をテキストに変換してWaveごとの指示を自動記録するために音声認識が必要です。";
