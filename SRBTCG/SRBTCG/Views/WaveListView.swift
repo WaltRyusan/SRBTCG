@@ -170,11 +170,11 @@ struct WaveListView: View {
                         .textFieldStyle(.plain)
                         .frame(minWidth: 200)
                         .submitLabel(.done)
-                        .onChange(of: title) { oldValue, newValue in
-                            if !newValue.isEmpty && newValue != currentInitialTitle {
-                                updateTitleInStorage(from: currentInitialTitle, to: newValue)
-                                currentInitialTitle = newValue
-                            }
+                        // 入力のたびに保存すると、1文字ずつリネームが走り
+                        // 中途半端なタイトルでキーが作られては消える。
+                        // 編集を終えたタイミングでまとめて確定する。
+                        .onChange(of: isEditingTitle) { _, focused in
+                            if !focused { commitTitleChange() }
                         }
                 }
                 
@@ -237,6 +237,8 @@ struct WaveListView: View {
             UINavigationBar.appearance().compactAppearance = appearance
         }
         .onDisappear {
+            // キーボードを閉じずに戻った場合もここで確定する
+            commitTitleChange()
             saveData()
         }
         .toolbar(.hidden, for: .tabBar)
@@ -613,6 +615,25 @@ struct WaveListView: View {
         }
     }
     
+    /// タイトルの変更を確定する
+    /// 空欄のまま確定された場合は元のタイトルに戻す
+    private func commitTitleChange() {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !trimmed.isEmpty else {
+            title = currentInitialTitle
+            return
+        }
+        guard trimmed != currentInitialTitle else {
+            title = trimmed
+            return
+        }
+
+        title = trimmed
+        updateTitleInStorage(from: currentInitialTitle, to: trimmed)
+        currentInitialTitle = trimmed
+    }
+
     private func updateTitleInStorage(from oldTitle: String, to newTitle: String) {
         // 1. 既存データを新しいキーで保存
         if let existingData = UserDefaults.standard.data(forKey: oldTitle) {
