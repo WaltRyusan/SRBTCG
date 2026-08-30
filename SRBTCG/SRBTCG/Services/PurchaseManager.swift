@@ -26,6 +26,12 @@ class PurchaseManager: ObservableObject {
     static let shared = PurchaseManager()
     
     // --- 商品ID（App Store Connectで設定する） ---
+    #if DEBUG
+    /// 開発中に課金機能を購入せず確認するためのフラグ
+    /// リリース前に必ず false へ戻すこと
+    static let unlockAllInDebug = true
+    #endif
+
     static let productSttExport = "stt_export"         // ¥160
     static let productAdFree = "ad_free"               // ¥320
     static let productPremiumBundle = "premium_bundle" // ¥400
@@ -146,6 +152,11 @@ class PurchaseManager: ObservableObject {
     
     /// STT+Export購入済みか（バンドル購入も含む）
     func hasSttExport() async -> Bool {
+        #if DEBUG
+        // 開発中は購入せずに機能を確認できるようにする。
+        // #if DEBUG のため本番ビルドには含まれない。
+        if Self.unlockAllInDebug { return true }
+        #endif
         let hasStt = await hasPurchased(Self.productSttExport)
         let hasBundle = await hasPurchased(Self.productPremiumBundle)
         return hasStt || hasBundle
@@ -153,6 +164,9 @@ class PurchaseManager: ObservableObject {
     
     /// 広告非表示購入済みか（バンドル購入も含む）
     func hasAdFree() async -> Bool {
+        #if DEBUG
+        if Self.unlockAllInDebug { return true }
+        #endif
         let hasAdFree = await hasPurchased(Self.productAdFree)
         let hasBundle = await hasPurchased(Self.productPremiumBundle)
         return hasAdFree || hasBundle

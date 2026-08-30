@@ -11,7 +11,9 @@ import AVFoundation
 struct PlaybackView: View {
     let title: String
     let waveTexts: [Int: String]
-    let waveCount: Int = 5
+    let waveCount: Int = WaveTiming.waveCount
+    /// 実時刻ベースの経過時間
+    @State private var clock = ElapsedClock()
     
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var appStrings: AppStrings
@@ -206,44 +208,54 @@ struct PlaybackView: View {
         }
         
         // カウントダウン開始
-        startCountdown()
-    }
-    
-    private func startCountdown() {
-        isCountdown = true
-        // Wave1開始前のみ3秒短縮。Wave間のインターバルは19.5秒のまま
-        countdownRemaining = 11.5
-        
-        playbackTimer?.invalidate()
-        playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { timer in
-            if countdownRemaining > 0 {
-                countdownRemaining -= 0.5
-                
-                // 3, 2, 1のカウント読み上げ（整数秒のみ）
-                if countdownRemaining <= 3 && countdownRemaining > 0 {
-                    let intValue = Int(countdownRemaining)
-                    if countdownRemaining == Double(intValue) {
-                        Task { @MainActor in
-                            ttsManager.speak("\(intValue)")
-                        }
-                    }
-                }
-            } else {
-                timer.invalidate()
-                progressWave = 1
-                startWavePlayback()
-            }
+        startCountdown(duration: WaveTiming.initialCountdown, isInterval: false) {
+            progressWave = 1
+            startWavePlayback()
         }
     }
     
-    /// 現在の progressWave のWaveを再生する
-    /// 呼び出し前に progressWave を設定しておくこと。
-    /// 以前はここで progressWave = 1 に上書きしており、
-    /// インターバル後に次のWaveへ進めても常にWave1に戻っていた。
+    /// カウントダウン（Wave1開始前 / Wave間インターバル共通）
+    ///
+    /// 経過時間はElapsedClockで実時刻から求める。
+    /// 以前はタイマー発火ごとに残り秒数を引いていたため、
+    /// TTS読み上げで発火が遅れるとその分そのままズレていた。
+    private func startCountdown(duration: TimeInterval, isInterval: Bool, then next: @escaping () -> Void) {
+        self.isCountdown = !isInterval
+        self.isInterval = isInterval
+        clock.reset()
+        countdownRemaining = duration
+        var lastSpokenSecond = Int(ceil(duration)) + 1
+
+        playbackTimer?.invalidate()
+        playbackTimer = Timer.scheduledTimer(withTimeInterval: WaveTiming.tick, repeats: true) { timer in
+            let remaining = max(0, duration - clock.elapsed)
+            countdownRemaining = remaining
+
+            // 3・2・1 の読み上げ。同じ秒を二重に読まないよう記録する
+            let currentSecond = Int(ceil(remaining))
+            if currentSecond <= WaveTiming.countdownSpeakFrom,
+               currentSecond > 0,
+               currentSecond < lastSpokenSecond {
+                lastSpokenSecond = currentSecond
+                Task { @MainActor in
+                    ttsManager.speak("\(currentSecond)")
+                }
+            }
+
+            if remaining <= 0 {
+                timer.invalidate()
+                next()
+            }
+        }
+    }
+
+    /// 現在の progressWave を再生する
+    /// 呼び出し前に progressWave を設定しておくこと
     private func startWavePlayback(announce: Bool = true) {
         isCountdown = false
         isInterval = false
         progressSecond = 0
+        clock.reset()
 
         if announce {
             let waveStartMsg = appStrings.waveStart(progressWave)
@@ -252,82 +264,59 @@ struct PlaybackView: View {
             }
             addToLog("Wave \(progressWave): \(waveStartMsg)")
         }
-        
+
+        var lastSpokenSlot = -1
+
         playbackTimer?.invalidate()
-        playbackTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { timer in
-            progressSecond += 1
-            
-            // 2秒ごとにテキストを読み上げ（100秒から2秒ごと）
-            if progressSecond % 2 == 0 {
-                let intervalIndex = (100 - progressSecond) / 2
-                let textIndex = (progressWave - 1) * 50 + (50 - intervalIndex - 1)
-                
+        playbackTimer = Timer.scheduledTimer(withTimeInterval: WaveTiming.tick, repeats: true) { timer in
+            let elapsed = min(clock.elapsed, WaveTiming.waveDuration)
+            progressSecond = Int(elapsed)
+
+            // 2秒ごとの枠に入ったら、その枠のテキストを一度だけ読み上げる
+            let slot = Int(elapsed / WaveTiming.textInterval)
+            if slot > lastSpokenSlot, slot < WaveTiming.slotsPerWave {
+                lastSpokenSlot = slot
+                let textIndex = (progressWave - 1) * WaveTiming.slotsPerWave + slot
                 if let text = waveTexts[textIndex], !text.isEmpty {
                     Task { @MainActor in
                         ttsManager.speak(text)
                         currentAnnouncement = text
-                        addToLog("[\(100 - progressSecond)秒] \(text)")
+                        addToLog("[残り\(Int(WaveTiming.waveDuration) - progressSecond)秒] \(text)")
                     }
                 }
             }
-            
-            // Wave終了チェック
-            if progressSecond >= 100 {
-                if progressWave < waveCount {
-                    // 次のWaveへ
+
+            if clock.elapsed >= WaveTiming.waveDuration {
+                timer.invalidate()
+                if progressWave < WaveTiming.waveCount {
                     startInterval()
                 } else {
-                    // 全Wave完了
                     completePlayback()
                 }
-                timer.invalidate()
             }
         }
     }
-    
+
     private func startInterval() {
-        isInterval = true
-        countdownRemaining = 19.5  // Wave間は19.5秒
-        
-        // Wave終了アナウンス
         let waveEndMsg = appStrings.waveEnd(progressWave)
         Task { @MainActor in
             ttsManager.speak(waveEndMsg)
         }
         addToLog("Wave \(progressWave) 終了: \(waveEndMsg)")
         currentAnnouncement = ""
-        
-        playbackTimer?.invalidate()
-        playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { timer in
-            if countdownRemaining > 0 {
-                countdownRemaining -= 0.5
-                
-                // 3, 2, 1のカウント読み上げ
-                if countdownRemaining <= 3 && countdownRemaining > 0 {
-                    let intValue = Int(countdownRemaining)
-                    if countdownRemaining == Double(intValue) {
-                        Task { @MainActor in
-                            ttsManager.speak("\(intValue)")
-                        }
-                    }
-                }
-            } else {
-                timer.invalidate()
-                // 次のWave開始
-                progressWave += 1
-                isInterval = false
 
-                let nextWaveMsg = appStrings.waveStart(progressWave)
-                Task { @MainActor in
-                    ttsManager.speak(nextWaveMsg)
-                    addToLog("Wave \(progressWave): \(nextWaveMsg)")
-                }
-                // ここでアナウンス済みなので再度読み上げない
-                startWavePlayback(announce: false)
+        startCountdown(duration: WaveTiming.interval, isInterval: true) {
+            progressWave += 1
+            let nextWaveMsg = appStrings.waveStart(progressWave)
+            Task { @MainActor in
+                ttsManager.speak(nextWaveMsg)
+                addToLog("Wave \(progressWave): \(nextWaveMsg)")
             }
+            // ここでアナウンス済みなので再度読み上げない
+            startWavePlayback(announce: false)
         }
     }
-    
+
     private func completePlayback() {
         playbackTimer?.invalidate()
         let completionMsg = appStrings.allClear
@@ -350,8 +339,8 @@ struct PlaybackView: View {
     
     private func getCurrentText() -> String? {
         // 2秒ごとのインデックスで取得（100秒から2秒ごと）
-        let intervalIndex = (100 - progressSecond) / 2
-        let textIndex = (progressWave - 1) * 50 + (50 - intervalIndex - 1)
+        let slot = progressSecond / Int(WaveTiming.textInterval)
+        let textIndex = (progressWave - 1) * WaveTiming.slotsPerWave + slot
         return waveTexts[textIndex]
     }
     

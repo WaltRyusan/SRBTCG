@@ -20,6 +20,8 @@ struct WaveListView: View {
     @State private var title: String = ""
     @State private var waveTexts: [Int: String] = [:] // 0-249 のインデックスで管理（5waves × 50entries）
     @State private var isRecording = false
+    /// 実時刻ベースの経過時間
+    @State private var clock = ElapsedClock()
     /// STT未購入で録音できないことを知らせる
     @State private var showPurchaseRequired = false
     /// 録音中止の確認
@@ -32,7 +34,7 @@ struct WaveListView: View {
     // 録音関連
     @State private var progressWave = 0
     @State private var progressSecond = 0
-    @State private var countdownRemaining = 15
+    @State private var countdownRemaining = Int(ceil(WaveTiming.initialCountdown))
     @State private var recordingTimer: Timer?
     
     // Wave別録音
@@ -271,7 +273,7 @@ struct WaveListView: View {
             progressWave = selectedWaveForRecording
             progressSecond = 0
             isWaitingForStart = true
-            countdownRemaining = 15
+            countdownRemaining = Int(ceil(WaveTiming.initialCountdown))
             
             Task { @MainActor in
                 ttsManager.speak("Wave \(selectedWaveForRecording)から録音開始。15秒後に着地タイミングでタップしてください")
@@ -304,46 +306,62 @@ struct WaveListView: View {
     private func startRecordingAfterConfirm() {
         // ダイアログ確認後にカウントダウン開始
         isWaitingForStart = true
-        countdownRemaining = 15
+        countdownRemaining = Int(ceil(WaveTiming.initialCountdown))
         Task { @MainActor in
             ttsManager.speak(appStrings.startingRecording)
         }
         startCountdownTimer()
     }
     
+    /// 着地待ちのカウントダウン
+    /// 0になっても自動では始めない（着地タイミングで手動タップさせる）
     private func startCountdownTimer() {
+        clock.reset()
+        let duration = WaveTiming.initialCountdown
+        countdownRemaining = Int(ceil(duration))
+        var lastSpokenSecond = countdownRemaining + 1
+
         recordingTimer?.invalidate()
-        recordingTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { timer in
-            if countdownRemaining > 0 {
-                countdownRemaining -= 1
-                
-                // カウントダウン音声
-                if countdownRemaining > 0 && countdownRemaining <= 3 {
-                    Task { @MainActor in
-                        ttsManager.speak("\(Int(countdownRemaining))")
-                    }
+        recordingTimer = Timer.scheduledTimer(withTimeInterval: WaveTiming.tick, repeats: true) { timer in
+            let remaining = max(0, duration - clock.elapsed)
+            countdownRemaining = Int(ceil(remaining))
+
+            let currentSecond = Int(ceil(remaining))
+            if currentSecond <= WaveTiming.countdownSpeakFrom,
+               currentSecond > 0,
+               currentSecond < lastSpokenSecond {
+                lastSpokenSecond = currentSecond
+                Task { @MainActor in
+                    ttsManager.speak("\(currentSecond)")
                 }
             }
-            // カウントダウン終了後は着地タイミング待ち（手動で開始）
+
+            if remaining <= 0 {
+                timer.invalidate()
+            }
         }
     }
     
+    /// 現在の progressWave から録音を開始する
+    ///
+    /// 経過時間はElapsedClockで実時刻から求める。
+    /// 以前はタイマー発火ごとに progressSecond += 2 していたため、
+    /// STT/TTSでメインスレッドが詰まると発火遅延がそのまま累積し、
+    /// 再生側の時間とズレていた。
     private func actuallyStartRecording() {
         isWaitingForStart = false
         isRecording = true
-        
-        // progressWaveが0の場合は1から開始、そうでなければ選択されたWaveから開始
+
         if progressWave == 0 {
             progressWave = 1
         }
         progressSecond = 0
-        
-        // Wave開始の音声
+        clock.reset()
+
         Task { @MainActor in
             ttsManager.speak(appStrings.waveStart(progressWave))
         }
-        
-        // STT開始
+
         do {
             try sttManager.startRecording()
         } catch {
@@ -351,75 +369,81 @@ struct WaveListView: View {
             stopRecording()
             return
         }
-        
-        var currentWaveStartIndex = (progressWave - 1) * 50
+
         var previousText = ""
-        
-        // Wave進行タイマー（2秒ごと）
-        recordingTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { timer in
-            let intervalIndex = progressSecond / 2
-            
-            // 現在のテキストを取得して差分を保存
-            let currentText = sttManager.recognizedText
-            var newText = ""
-            
-            if currentText.count > previousText.count {
-                newText = String(currentText.dropFirst(previousText.count)).trimmingCharacters(in: .whitespacesAndNewlines)
-            } else if currentText != previousText && !currentText.isEmpty {
-                newText = currentText.trimmingCharacters(in: .whitespacesAndNewlines)
+        var lastSavedSlot = -1
+
+        recordingTimer?.invalidate()
+        recordingTimer = Timer.scheduledTimer(withTimeInterval: WaveTiming.tick, repeats: true) { timer in
+            let elapsed = min(clock.elapsed, WaveTiming.waveDuration)
+            progressSecond = Int(elapsed)
+
+            // 2秒ごとの枠に入ったら、その枠へ差分テキストを保存する
+            let slot = Int(elapsed / WaveTiming.textInterval)
+            if slot > lastSavedSlot, slot < WaveTiming.slotsPerWave {
+                lastSavedSlot = slot
+
+                let currentText = sttManager.recognizedText
+                var newText = ""
+                if currentText.count > previousText.count {
+                    newText = String(currentText.dropFirst(previousText.count))
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                } else if currentText != previousText && !currentText.isEmpty {
+                    newText = currentText.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+
+                if !newText.isEmpty {
+                    let textIndex = (progressWave - 1) * WaveTiming.slotsPerWave + slot
+                    waveTexts[textIndex] = newText
+                }
+                previousText = currentText
             }
-            
-            if !newText.isEmpty {
-                let textIndex = currentWaveStartIndex + intervalIndex
-                waveTexts[textIndex] = newText
-                print("Wave\(progressWave) \(100 - intervalIndex * 2)秒: \(newText)")
-            }
-            
-            previousText = currentText
-            progressSecond += 2
-            
-            // Wave切り替え（100秒ごと）
-            if progressSecond >= 100 {
-                if progressWave < 5 {
-                    // 現在のWaveを終了
-                    Task { @MainActor in
-                        ttsManager.speak(appStrings.waveEnd(progressWave))
-                    }
-                    
-                    // Wave間のインターバル（19.5秒）
-                    timer.invalidate()
-                    countdownRemaining = 19
-                    
-                    Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { intervalTimer in
-                        countdownRemaining -= 1
-                        
-                        if countdownRemaining <= 0 {
-                            intervalTimer.invalidate()
-                            // 次のWaveへ
-                            progressWave += 1
-                            progressSecond = 0
-                            currentWaveStartIndex = (progressWave - 1) * 50
-                            previousText = ""
-                            sttManager.recognizedText = ""
-                            
-                            Task { @MainActor in
-                                Task { @MainActor in
-            ttsManager.speak(appStrings.waveStart(progressWave))
-        }
-                            }
-                            
-                            // 録音再開
-                            actuallyStartRecording()
-                        }
-                    }
+
+            if clock.elapsed >= WaveTiming.waveDuration {
+                timer.invalidate()
+                if progressWave < WaveTiming.waveCount {
+                    startRecordingInterval()
                 } else {
-                    // 全Wave完了
                     stopRecording()
                 }
             }
         }
     }
-    
+
+    /// Wave間のインターバル。終了後に次のWaveの録音を始める
+    private func startRecordingInterval() {
+        Task { @MainActor in
+            ttsManager.speak(appStrings.waveEnd(progressWave))
+        }
+
+        clock.reset()
+        countdownRemaining = Int(ceil(WaveTiming.interval))
+        var lastSpokenSecond = countdownRemaining + 1
+
+        recordingTimer?.invalidate()
+        recordingTimer = Timer.scheduledTimer(withTimeInterval: WaveTiming.tick, repeats: true) { timer in
+            let remaining = max(0, WaveTiming.interval - clock.elapsed)
+            countdownRemaining = Int(ceil(remaining))
+
+            let currentSecond = Int(ceil(remaining))
+            if currentSecond <= WaveTiming.countdownSpeakFrom,
+               currentSecond > 0,
+               currentSecond < lastSpokenSecond {
+                lastSpokenSecond = currentSecond
+                Task { @MainActor in
+                    ttsManager.speak("\(currentSecond)")
+                }
+            }
+
+            if remaining <= 0 {
+                timer.invalidate()
+                progressWave += 1
+                sttManager.recognizedText = ""
+                actuallyStartRecording()
+            }
+        }
+    }
+
     /// 録音中止の要求。中止すると取り消せないため確認を挟む
     /// Wave1〜5のセクション一覧
     @ViewBuilder
