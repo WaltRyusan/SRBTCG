@@ -147,6 +147,16 @@ class STTManager: NSObject, ObservableObject {
         
         // 音声入力の設定
         let recordingFormat = inputNode.outputFormat(forBus: 0)
+
+        // マイクが使えないとサンプルレートが0のフォーマットが返り、
+        // installTap が ObjC 例外を投げてアプリごと落ちる（Swiftのcatchでは拾えない）。
+        // 他アプリがマイクを掴んでいるときなどに起きるため、
+        // 落とさずに throw して呼び出し側で止められるようにする。
+        guard recordingFormat.sampleRate > 0, recordingFormat.channelCount > 0 else {
+            stopRecording()
+            throw STTError.audioEngineStartFailed
+        }
+
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { buffer, _ in
             self.recognitionRequest?.append(buffer)
         }

@@ -24,7 +24,9 @@ struct PlaybackView: View {
     @State private var showStopConfirmation = false
     @State private var progressWave = 0
     @State private var progressSecond = 0
-    @State private var countdownRemaining: Double = 14.5
+    // 初期値に 14.5 がベタ書きされていた。3秒短縮した後の値と食い違い、
+    // 画面が出た最初の1フレームだけ古い秒数が見えていた。
+    @State private var countdownRemaining: Double = WaveTiming.initialCountdown
     @State private var isCountdown = true
     @State private var isInterval = false
     @State private var playbackTimer: Timer?

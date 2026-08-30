@@ -117,6 +117,7 @@ struct WaveListView: View {
         case stopConfirm
         case purchaseRequired
         case permissionDenied
+        case recordingFailed
         case importError(String)
 
         var id: String {
@@ -129,6 +130,7 @@ struct WaveListView: View {
             case .stopConfirm: return "stopConfirm"
             case .purchaseRequired: return "purchaseRequired"
             case .permissionDenied: return "permissionDenied"
+            case .recordingFailed: return "recordingFailed"
             case .importError: return "importError"
             }
         }
@@ -143,6 +145,7 @@ struct WaveListView: View {
             case .stopConfirm: return "録音を中止しますか？"
             case .purchaseRequired: return "録音機能の購入が必要です"
             case .permissionDenied: return "マイクを使用できません"
+            case .recordingFailed: return "録音を開始できません"
             case .importError: return "インポートエラー"
             }
         }
@@ -168,6 +171,9 @@ struct WaveListView: View {
                 return "音声を文字にして記録する機能は有料です。設定画面から購入できます。"
             case .permissionDenied:
                 return "録音するにはマイクと音声認識の許可が必要です。設定アプリから許可してください。"
+            case .recordingFailed:
+                return "マイクを使用できませんでした。"
+                    + "他のアプリが録音中でないか確認して、もう一度お試しください。"
             case .importError(let detail):
                 return detail
             }
@@ -210,7 +216,7 @@ struct WaveListView: View {
         case .stopConfirm:
             Button("続ける", role: .cancel) { }
             Button("中止する", role: .destructive) { stopRecording() }
-        case .noText, .purchaseRequired, .permissionDenied, .importError:
+        case .noText, .purchaseRequired, .permissionDenied, .recordingFailed, .importError:
             Button("OK", role: .cancel) { }
         }
     }
@@ -500,8 +506,10 @@ struct WaveListView: View {
         do {
             try sttManager.startRecording()
         } catch {
-            print("Failed to start recording: \(error)")
+            // 無言で止まると原因が分からないので知らせる
+            kDebugErrorPrint(error, message: "録音の開始に失敗")
             stopRecording()
+            dialog = .recordingFailed
             return
         }
 
