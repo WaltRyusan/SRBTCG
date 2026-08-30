@@ -252,11 +252,27 @@ struct WaveListView: View {
     
     // MARK: - Methods
     
-    private func toggleWave(_ wave: Int) {
-        if expandedWaves.contains(wave) {
+    /// Waveの開閉
+    ///
+    /// 展開中のWaveは50行あるため、下までスクロールした状態で閉じると
+    /// コンテンツが縮んで画面に何も残らなくなる。
+    /// 閉じたときはその見出しの位置までスクロールを戻す。
+    private func toggleWave(_ wave: Int, proxy: ScrollViewProxy? = nil) {
+        let willCollapse = expandedWaves.contains(wave)
+
+        if willCollapse {
             expandedWaves.remove(wave)
         } else {
             expandedWaves.insert(wave)
+        }
+
+        if willCollapse, let proxy {
+            // レイアウトが縮んでから移動させる
+            DispatchQueue.main.async {
+                withAnimation(.easeOut(duration: 0.25)) {
+                    proxy.scrollTo(wave, anchor: .top)
+                }
+            }
         }
     }
     
@@ -486,33 +502,36 @@ struct WaveListView: View {
     /// Wave1〜5のセクション一覧
     @ViewBuilder
     private var waveSections: some View {
-        ScrollView {
-            // ヘッダーを上部に固定する。
-            // 展開したWaveをスクロールしても見出しが残るので、
-            // 途中の位置からでも閉じられる。
-            LazyVStack(spacing: 12, pinnedViews: [.sectionHeaders]) {
-                Spacer()
-                    .frame(height: 20)
+        ScrollViewReader { proxy in
+            ScrollView {
+                // ヘッダーを上部に固定する。
+                // 展開したWaveをスクロールしても見出しが残るので、
+                // 途中の位置からでも閉じられる。
+                LazyVStack(spacing: 12, pinnedViews: [.sectionHeaders]) {
+                    Spacer()
+                        .frame(height: 20)
 
-                ForEach(1...5, id: \.self) { wave in
-                    Section {
-                        if expandedWaves.contains(wave) {
-                            WaveIntervalList(wave: wave, waveTexts: $waveTexts)
+                    ForEach(1...5, id: \.self) { wave in
+                        Section {
+                            if expandedWaves.contains(wave) {
+                                WaveIntervalList(wave: wave, waveTexts: $waveTexts)
+                            }
+                        } header: {
+                            WaveSectionHeader(
+                                wave: wave,
+                                isExpanded: expandedWaves.contains(wave),
+                                onToggleExpand: { toggleWave(wave, proxy: proxy) },
+                                onWaveRecording: isRecording ? nil : { startWaveRecording(wave: $0) },
+                                onWavePlayback: isRecording ? nil : { startWavePlayback(from: $0) }
+                            )
+                            .id(wave)
                         }
-                    } header: {
-                        WaveSectionHeader(
-                            wave: wave,
-                            isExpanded: expandedWaves.contains(wave),
-                            onToggleExpand: { toggleWave(wave) },
-                            onWaveRecording: isRecording ? nil : { startWaveRecording(wave: $0) },
-                            onWavePlayback: isRecording ? nil : { startWavePlayback(from: $0) }
-                        )
                     }
-                }
 
-                // フローティングボタンに隠れないための余白
-                Spacer()
-                    .frame(height: 100)
+                    // フローティングボタンに隠れないための余白
+                    Spacer()
+                        .frame(height: 100)
+                }
             }
         }
     }
@@ -819,6 +838,9 @@ struct WaveSectionHeader: View {
                 .font(.largeTitle)
                 .fontWeight(.bold)
                 .foregroundColor(.white)
+                // ボタンが増えて幅が足りなくなると折り返してしまうため固定する
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
 
             Spacer()
 
