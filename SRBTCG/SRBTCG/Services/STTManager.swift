@@ -45,7 +45,11 @@ class STTManager: NSObject, ObservableObject {
     private override init() {
         super.init()
         setupSpeechRecognizer()
-        requestAuthorization()
+        // ここで requestAuthorization() を呼ぶと、
+        // 画面を開いただけで音声認識の許可ダイアログが出てしまう。
+        // 許可は録音ボタンを押したときに requestPermissions() で取る。
+        // 現在の状態を読むだけならダイアログは出ない。
+        isAuthorized = SFSpeechRecognizer.authorizationStatus() == .authorized
     }
     
     /// 音声認識の初期設定
@@ -86,29 +90,6 @@ class STTManager: NSObject, ObservableObject {
         return speechGranted && micGranted
     }
 
-    /// 権限リクエスト
-    private func requestAuthorization() {
-        SFSpeechRecognizer.requestAuthorization { [weak self] authStatus in
-            DispatchQueue.main.async {
-                switch authStatus {
-                case .authorized:
-                    self?.isAuthorized = true
-                case .denied:
-                    self?.isAuthorized = false
-                    self?.errorMessage = "音声認識の権限が拒否されました"
-                case .restricted:
-                    self?.isAuthorized = false
-                    self?.errorMessage = "音声認識は制限されています"
-                case .notDetermined:
-                    self?.isAuthorized = false
-                    self?.errorMessage = "音声認識の権限が未決定です"
-                @unknown default:
-                    self?.isAuthorized = false
-                }
-            }
-        }
-    }
-    
     /// 録音開始
     func startRecording() throws {
         // 前回の録音を確実に畳んでから始める。

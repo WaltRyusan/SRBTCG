@@ -96,9 +96,18 @@ struct SettingsView: View {
                         }
                         
                         Button(action: restorePurchases) {
-                            Label(appStrings.purchaseRestore, systemImage: "arrow.clockwise")
-                                .foregroundColor(AppColors.primary)
+                            HStack {
+                                Label(appStrings.purchaseRestore, systemImage: "arrow.clockwise")
+                                    .foregroundColor(AppColors.primary)
+                                Spacer()
+                                // 復元はAppStoreとの通信を待つ。
+                                // 何も出ないと固まったように見えていた。
+                                if purchaseManager.isLoading {
+                                    ProgressView()
+                                }
+                            }
                         }
+                        .disabled(purchaseManager.isLoading)
                     }
                     
                     // アプリについて

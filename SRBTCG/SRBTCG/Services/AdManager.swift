@@ -42,13 +42,22 @@ class AdManager: NSObject, ObservableObject {
     // お試し回数
     private let trialCount = 3
     
+    /// 初期化済みか
+    ///
+    /// init と SRBTCGApp の onAppear の両方から呼ばれていたため、
+    /// 起動のたびに二重に走っていた。
+    private var isInitialized = false
+
     private override init() {
         super.init()
         initialize()
     }
-    
-    /// 初期化
+
+    /// 初期化（複数回呼ばれても一度しか実行しない）
     func initialize() {
+        guard !isInitialized else { return }
+        isInitialized = true
+
         // TODO: Google Mobile Ads SDK追加後、以下を実装
         // GADMobileAds.sharedInstance().start { _ in
         //     print("AdMob initialized")

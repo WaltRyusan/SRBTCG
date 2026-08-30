@@ -46,9 +46,22 @@ class PurchaseManager: ObservableObject {
     // --- SharedPreferencesキー（オフライン時のキャッシュ用） ---
     private let cachePrefix = "purchase_cache_"
     
+    /// 権利の問い合わせを一度でも完了したか
+    ///
+    /// Transaction.currentEntitlements は StoreKit への往復が入る。
+    /// 未購入だと結果が空でキャッシュにも残らないため、
+    /// 以前は録音ボタンを押すたびに毎回問い合わせが走り、
+    /// 押してから数秒反応が返らなかった。
+    /// 起動時とトランザクション更新時に取れば十分なので、以後はメモリで答える。
+    private var hasLoadedEntitlements = false
+
     private init() {
+        // 保存済みの購入状態を先に反映しておく。
+        // これが呼ばれておらず、毎回StoreKitに聞きに行っていた。
+        loadPurchaseCache()
+
         updateListenerTask = listenForTransactions()
-        
+
         Task {
             await loadProducts()
             await updatePurchasedProducts()
@@ -126,6 +139,8 @@ class PurchaseManager: ObservableObject {
         
         do {
             try await AppStore.sync()
+            // 復元は取り直しが目的なので、キャッシュ済みでも必ず問い合わせる
+            hasLoadedEntitlements = false
             await updatePurchasedProducts()
             
             if purchasedProducts.isEmpty {
@@ -140,14 +155,21 @@ class PurchaseManager: ObservableObject {
     
     /// 特定商品を購入済みか確認
     func hasPurchased(_ productId: String) async -> Bool {
-        // メモリキャッシュをチェック
-        if purchasedProducts.contains(productId) {
+        await hasAny(of: [productId])
+    }
+
+    /// いずれかを購入済みか
+    ///
+    /// 商品ごとに hasPurchased を呼ぶと、未購入のとき商品の数だけ
+    /// StoreKitへの問い合わせが走る。まとめて1回で判定する。
+    private func hasAny(of productIds: [String]) async -> Bool {
+        if productIds.contains(where: { purchasedProducts.contains($0) }) {
             return true
         }
-        
-        // StoreKitに問い合わせ
+        guard !hasLoadedEntitlements else { return false }
+
         await updatePurchasedProducts()
-        return purchasedProducts.contains(productId)
+        return productIds.contains(where: { purchasedProducts.contains($0) })
     }
     
     /// STT+Export購入済みか（バンドル購入も含む）
@@ -157,9 +179,7 @@ class PurchaseManager: ObservableObject {
         // #if DEBUG のため本番ビルドには含まれない。
         if Self.unlockAllInDebug { return true }
         #endif
-        let hasStt = await hasPurchased(Self.productSttExport)
-        let hasBundle = await hasPurchased(Self.productPremiumBundle)
-        return hasStt || hasBundle
+        return await hasAny(of: [Self.productSttExport, Self.productPremiumBundle])
     }
     
     /// 広告非表示購入済みか（バンドル購入も含む）
@@ -167,9 +187,7 @@ class PurchaseManager: ObservableObject {
         #if DEBUG
         if Self.unlockAllInDebug { return true }
         #endif
-        let hasAdFree = await hasPurchased(Self.productAdFree)
-        let hasBundle = await hasPurchased(Self.productPremiumBundle)
-        return hasAdFree || hasBundle
+        return await hasAny(of: [Self.productAdFree, Self.productPremiumBundle])
     }
     
     /// プレミアムバンドル購入済みか
@@ -225,7 +243,8 @@ class PurchaseManager: ObservableObject {
         }
         
         purchasedProducts = purchased
-        
+        hasLoadedEntitlements = true
+
         // キャッシュに保存
         for productId in purchased {
             savePurchaseCache(productId, purchased: true)

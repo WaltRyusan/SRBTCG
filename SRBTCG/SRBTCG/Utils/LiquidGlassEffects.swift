@@ -64,16 +64,22 @@ struct LiquidShapeView: View {
     var body: some View {
         ZStack {
             // 複数の流体形状
-            LiquidBlob(offset: offset1, color: AppColors.primary.opacity(0.3))
+            LiquidBlob(offset: offset1, color: AppColors.primary.opacity(0.3), scale: 1.1)
                 .rotationEffect(.degrees(rotation))
-            
-            LiquidBlob(offset: offset2, color: AppColors.accent.opacity(0.3))
+
+            LiquidBlob(offset: offset2, color: AppColors.accent.opacity(0.3), scale: 0.9)
                 .rotationEffect(.degrees(rotation + 120))
-            
-            LiquidBlob(offset: offset3, color: AppColors.golden.opacity(0.3))
+
+            LiquidBlob(offset: offset3, color: AppColors.golden.opacity(0.3), scale: 1.0)
                 .rotationEffect(.degrees(rotation + 240))
         }
         .blur(radius: 30)
+        // ぼかしを毎フレーム、レイヤーツリー上で計算すると重い。
+        // まとめて1枚のMetalレイヤーに描くことで、
+        // 回転し続けていても合成が1回で済む。
+        .drawingGroup()
+        // 背景の装飾なので、タップ判定の対象から外す
+        .allowsHitTesting(false)
         .onAppear {
             // 流体アニメーション
             withAnimation(.easeInOut(duration: 8).repeatForever(autoreverses: true)) {
@@ -92,13 +98,20 @@ struct LiquidShapeView: View {
 struct LiquidBlob: View {
     let offset: CGSize
     let color: Color
-    
+    /// 大きさのばらつき
+    ///
+    /// 以前は body の中で CGFloat.random を呼んでいた。
+    /// bodyは何度でも評価されるうえ、そのたびに違う値になるため
+    /// SwiftUIが「変わっていない」と判断できず、
+    /// 再描画が止まらなくなっていた。生成時に一度だけ決める。
+    var scale: CGFloat = 1
+
     var body: some View {
         Ellipse()
             .fill(color)
             .frame(width: 200, height: 200)
             .offset(offset)
-            .scaleEffect(CGFloat.random(in: 0.8...1.2))
+            .scaleEffect(scale)
     }
 }
 
@@ -120,6 +133,8 @@ struct AnimatedGradientBackground: View {
             endPoint: animateGradient ? .bottomTrailing : .topTrailing
         )
         .ignoresSafeArea()
+        // 背景なのでタップ判定に載せない
+        .allowsHitTesting(false)
         .onAppear {
             withAnimation(.linear(duration: 10).repeatForever(autoreverses: true)) {
                 animateGradient.toggle()
@@ -296,27 +311,39 @@ extension View {
             .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
     }
     
+    /// 光沢が横切るエフェクト
+    ///
+    /// 以前は value: true という定数を監視していたため値が変化せず、
+    /// アニメーションは一度も動いていなかった。
+    /// 位相をStateで持って動かす。
     func shimmer() -> some View {
-        self.overlay(
+        modifier(ShimmerModifier())
+    }
+}
+
+// MARK: - Shimmer
+
+struct ShimmerModifier: ViewModifier {
+    @State private var phase: CGFloat = -1
+
+    func body(content: Content) -> some View {
+        content.overlay(
             GeometryReader { geometry in
                 LinearGradient(
-                    colors: [
-                        Color.clear,
-                        Color.white.opacity(0.5),
-                        Color.clear
-                    ],
+                    colors: [.clear, Color.white.opacity(0.5), .clear],
                     startPoint: .leading,
                     endPoint: .trailing
                 )
                 .frame(width: geometry.size.width * 0.3)
-                .offset(x: -geometry.size.width * 0.3)
-                .animation(
-                    .linear(duration: 2)
-                        .repeatForever(autoreverses: false),
-                    value: true
-                )
+                .offset(x: phase * geometry.size.width)
+                .onAppear {
+                    withAnimation(.linear(duration: 2).repeatForever(autoreverses: false)) {
+                        phase = 1.3
+                    }
+                }
             }
-            .mask(self)
+            .mask(content)
+            .allowsHitTesting(false)
         )
     }
 }

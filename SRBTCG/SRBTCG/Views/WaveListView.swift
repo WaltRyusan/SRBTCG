@@ -416,6 +416,10 @@ struct WaveListView: View {
     /// カウントダウン前に取っておかないとOSダイアログが割り込んで
     /// 開始タイミングがずれる。
     private func prepareRecording() async -> Bool {
+        // 購入状態の問い合わせも待ち時間があるので、先にインジケータを出す
+        isPreparingRecording = true
+        defer { isPreparingRecording = false }
+
         // 未購入のまま無言でreturnしていたため、押しても何も起きなかった
         let hasPurchased = await purchaseManager.hasSttExport()
         guard hasPurchased else {
@@ -423,9 +427,7 @@ struct WaveListView: View {
             return false
         }
 
-        isPreparingRecording = true
         let granted = await sttManager.requestPermissions()
-        isPreparingRecording = false
 
         guard granted else {
             dialog = .permissionDenied
@@ -731,7 +733,9 @@ struct WaveListView: View {
                         .cornerRadius(25)
                         .shadow(color: AppColors.danger.opacity(0.3), radius: 8, x: 0, y: 4)
                     }
-                    .disabled(isPlaying || !sttManager.isAuthorized)
+                    // 許可は押したあとの prepareRecording() で取るため、
+                    // ここで isAuthorized を見て無効化すると初回に一生押せない
+                    .disabled(isPlaying)
                     
                     Spacer()
                 }
@@ -800,7 +804,6 @@ struct WaveListView: View {
     }
     
     private func saveData() {
-        UserDefaults.standard.set(title, forKey: title)
         if let encoded = try? JSONEncoder().encode(waveTexts) {
             UserDefaults.standard.set(encoded, forKey: title)
         }
@@ -1027,7 +1030,11 @@ struct WaveIntervalList: View {
     @Binding var waveTexts: [Int: String]
 
     var body: some View {
-        VStack(spacing: 10) {
+        // 1Waveあたり50行あり、そのすべてがTextFieldになる。
+        // VStackだと展開した瞬間に50個まとめて生成され、
+        // 開くたびに一瞬固まっていた。
+        // LazyVStackにすると画面に入る分だけ作られる。
+        LazyVStack(spacing: 10) {
             ForEach(0..<WaveTiming.slotsPerWave, id: \.self) { intervalIndex in
                 WaveIntervalRow(
                     wave: wave,
