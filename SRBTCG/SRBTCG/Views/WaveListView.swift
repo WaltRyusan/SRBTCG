@@ -102,7 +102,6 @@ struct WaveListView: View {
                     progressWave: progressWave,
                     progressSecond: progressSecond,
                     countdownRemaining: countdownRemaining,
-                    onStart: startRecording,
                     onStop: requestStopRecording
                 )
             }
