@@ -24,6 +24,10 @@ struct WaveListView: View {
     @State private var clock = ElapsedClock()
     /// タイトル入力中かどうか（キーボード表示中は下部ボタンを隠す）
     @FocusState private var isEditingTitle: Bool
+
+    /// エクスポート/インポートのメニューを出すか
+    /// v2で提供予定のため、v1ではfalseにしている
+    private static let showsExportMenu = false
     /// STT未購入で録音できないことを知らせる
     @State private var showPurchaseRequired = false
     /// 録音中止の確認
@@ -174,15 +178,20 @@ struct WaveListView: View {
                         }
                 }
                 
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        showMenu = true
-                    }) {
-                        Image(systemName: "line.3.horizontal")
-                            .font(.system(size: 18, weight: .medium))
-                            .foregroundColor(AppColors.primary)
+                // エクスポート/インポートはv2で提供予定のため、
+                // v1ではメニューごと非表示にする。
+                // 実装（exportData / handleImportedFile / actionSheet）は残してある。
+                if WaveListView.showsExportMenu {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button(action: {
+                            showMenu = true
+                        }) {
+                            Image(systemName: "line.3.horizontal")
+                                .font(.system(size: 18, weight: .medium))
+                                .foregroundColor(AppColors.primary)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .sheet(isPresented: $showPlaybackView) {

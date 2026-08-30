@@ -17,6 +17,10 @@ struct SettingsView: View {
     @State private var showPurchaseView = false
     @State private var showAbout = false
     @State private var showDocumentPicker = false
+
+    /// データ管理（エクスポート/インポート）を表示するか
+    /// v2で提供予定のため、v1ではfalseにしている
+    private static let showsDataManagement = false
     @State private var showShareSheet = false
     @State private var exportURL: URL?
     @State private var showAlert = false
@@ -47,15 +51,19 @@ struct SettingsView: View {
                     }
                     
                     // データ管理
-                    Section(header: Text(appStrings.dataManagement)) {
-                        Button(action: exportData) {
-                            Label(appStrings.exportData, systemImage: "square.and.arrow.up")
-                                .foregroundColor(AppColors.textPrimary)
-                        }
-                        
-                        Button(action: importData) {
-                            Label(appStrings.importData, systemImage: "square.and.arrow.down")
-                                .foregroundColor(AppColors.textPrimary)
+                    // エクスポート/インポートはv2で提供予定のため非表示。
+                    // 実装（exportData / importData）は残してある。
+                    if Self.showsDataManagement {
+                        Section(header: Text(appStrings.dataManagement)) {
+                            Button(action: exportData) {
+                                Label(appStrings.exportData, systemImage: "square.and.arrow.up")
+                                    .foregroundColor(AppColors.textPrimary)
+                            }
+
+                            Button(action: importData) {
+                                Label(appStrings.importData, systemImage: "square.and.arrow.down")
+                                    .foregroundColor(AppColors.textPrimary)
+                            }
                         }
                     }
                     
