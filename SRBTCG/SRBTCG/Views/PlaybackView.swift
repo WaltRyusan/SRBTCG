@@ -211,7 +211,8 @@ struct PlaybackView: View {
     
     private func startCountdown() {
         isCountdown = true
-        countdownRemaining = 14.5
+        // Wave1開始前のみ3秒短縮。Wave間のインターバルは19.5秒のまま
+        countdownRemaining = 11.5
         
         playbackTimer?.invalidate()
         playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { timer in
@@ -229,23 +230,28 @@ struct PlaybackView: View {
                 }
             } else {
                 timer.invalidate()
+                progressWave = 1
                 startWavePlayback()
             }
         }
     }
     
-    private func startWavePlayback() {
+    /// 現在の progressWave のWaveを再生する
+    /// 呼び出し前に progressWave を設定しておくこと。
+    /// 以前はここで progressWave = 1 に上書きしており、
+    /// インターバル後に次のWaveへ進めても常にWave1に戻っていた。
+    private func startWavePlayback(announce: Bool = true) {
         isCountdown = false
         isInterval = false
-        progressWave = 1
         progressSecond = 0
-        
-        // Wave開始アナウンス
-        let waveStartMsg = appStrings.waveStart(1)
-        Task { @MainActor in
-            ttsManager.speak(waveStartMsg)
+
+        if announce {
+            let waveStartMsg = appStrings.waveStart(progressWave)
+            Task { @MainActor in
+                ttsManager.speak(waveStartMsg)
+            }
+            addToLog("Wave \(progressWave): \(waveStartMsg)")
         }
-        addToLog("Wave 1: \(waveStartMsg)")
         
         playbackTimer?.invalidate()
         playbackTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { timer in
@@ -309,15 +315,15 @@ struct PlaybackView: View {
                 timer.invalidate()
                 // 次のWave開始
                 progressWave += 1
-                progressSecond = 0
                 isInterval = false
-                
+
                 let nextWaveMsg = appStrings.waveStart(progressWave)
                 Task { @MainActor in
                     ttsManager.speak(nextWaveMsg)
                     addToLog("Wave \(progressWave): \(nextWaveMsg)")
                 }
-                startWavePlayback()
+                // ここでアナウンス済みなので再度読み上げない
+                startWavePlayback(announce: false)
             }
         }
     }
