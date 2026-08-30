@@ -150,9 +150,12 @@ struct WaveListView: View {
         var message: String {
             switch self {
             case .recordingConfirm:
-                return "「録音開始」をタップするとカウントダウンが始まり、0になるとWave1の録音を自動で開始します。"
+                return "地面に着地したタイミングで「録音開始」をタップしてください。"
+                    + "カウントダウンが0になると、Wave1の録音が自動で始まります。"
             case .waveRecordingConfirm(let wave):
-                return "Wave \(wave) から録音を開始します。カウントダウンが0になったら自動で録音を始めます。"
+                return "Wave \(wave) から録音を開始します。"
+                    + "地面に着地したタイミングで「録音開始」をタップしてください。"
+                    + "カウントダウンが0になると、録音が自動で始まります。"
             case .playbackConfirm:
                 return "地面に着地したタイミングで再生を開始してください。準備ができたら「再生開始」をタップしてください。"
             case .wavePlaybackConfirm(let wave):
