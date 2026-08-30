@@ -22,6 +22,8 @@ struct WaveListView: View {
     @State private var isRecording = false
     /// 実時刻ベースの経過時間
     @State private var clock = ElapsedClock()
+    /// タイトル入力中かどうか（キーボード表示中は下部ボタンを隠す）
+    @FocusState private var isEditingTitle: Bool
     /// STT未購入で録音できないことを知らせる
     @State private var showPurchaseRequired = false
     /// 録音中止の確認
@@ -155,6 +157,9 @@ struct WaveListView: View {
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     TextField("タイトルを入力", text: $title)
+                        .focused($isEditingTitle)
+                        .submitLabel(.done)
+                        .onSubmit { isEditingTitle = false }
                         .font(.headline)
                         .multilineTextAlignment(.center)
                         .foregroundColor(AppColors.textPrimary)
@@ -194,9 +199,8 @@ struct WaveListView: View {
                 ActionSheet(
                     title: Text("メニュー"),
                     buttons: [
-                        .default(Text("タイトル編集")) {
-                            // タイトル編集（現在のTextField編集を促す）
-                        },
+                        // 「タイトル編集」は中身が空で押しても何も起きなかったため削除。
+                        // タイトルは画面上部のテキストフィールドを直接タップして編集する。
                         .default(Text("エクスポート")) {
                             exportData()
                         },

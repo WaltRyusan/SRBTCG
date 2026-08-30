@@ -81,21 +81,22 @@ struct MainView: View {
                 
                 ForEach(filteredTitles, id: \.self) { title in
                     if isEditing {
-                        GlassListRow(
-                            title: title,
-                            isEditing: isEditing,
-                            isSelected: editSelectedItems.contains(title),
-                            onTap: {
-                                toggleSelection(title)
-                            }
-                        )
+                        Button {
+                            toggleSelection(title)
+                        } label: {
+                            GlassListRow(
+                                title: title,
+                                isEditing: isEditing,
+                                isSelected: editSelectedItems.contains(title)
+                            )
+                        }
+                        .buttonStyle(PlainButtonStyle())
                     } else {
                         NavigationLink(value: title) {
                             GlassListRow(
                                 title: title,
                                 isEditing: isEditing,
-                                isSelected: false,
-                                onTap: {}
+                                isSelected: false
                             )
                         }
                         .buttonStyle(PlainButtonStyle())
@@ -355,7 +356,6 @@ struct GlassListRow: View {
     let title: String
     let isEditing: Bool
     let isSelected: Bool
-    let onTap: () -> Void
     @State private var isPressed = false
     
     var body: some View {
@@ -385,23 +385,13 @@ struct GlassListRow: View {
         .padding()
         .liquidGlassCard()
         .scaleEffect(isPressed ? 0.98 : 1)
+        // セル内のどこをタップしても反応するように、余白も含めて判定させる
         .contentShape(Rectangle())
-        .onTapGesture {
-            if isEditing {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
-                    isPressed = true
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    isPressed = false
-                    onTap()
-                }
-            }
-        }
-        // 編集モード以外ではこのビュー自身はタップを扱わず、
-        // 親のNavigationLinkに委ねる。
-        // 以前は .allowsHitTesting(isEditing) でビュー全体を無効化していたため、
-        // 通常時にリンクが反応せず画面遷移できなかった。
     }
+
+    // タップの扱いは呼び出し側に任せている。
+    // ここに .onTapGesture を置くと、中身が空でもタップを消費してしまい、
+    // 親のNavigationLinkに届かず画面遷移できなくなる。
 }
 
 #Preview {
