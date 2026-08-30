@@ -30,6 +30,12 @@ class STTManager: NSObject, ObservableObject {
     // 状態
     @Published var isRecording = false
     @Published var recognizedText = ""
+    /// 認識できた語を発話時刻つきで保持する
+    ///
+    /// 認識結果は後から前の語を訂正するため、
+    /// 文字列の差分を一定間隔で切り出すと欠けたり重複したりする。
+    /// 実際に発話された時刻が分かれば、正しい枠へ割り振れる。
+    @Published var recognizedSegments: [RecognizedSegment] = []
     @Published var isAuthorized = false
     @Published var errorMessage: String?
     
@@ -114,22 +120,46 @@ class STTManager: NSObject, ObservableObject {
         stopRecording()
 
         // オーディオセッションの設定
+        //
+        // .record にすると録音中は再生が止まり、Wave開始・終了の
+        // アナウンスが聞こえなくなる。録音と再生を両立させる必要がある。
+        // .voiceChat はエコーキャンセルが入るので、
+        // スピーカーから出た自分のアナウンスを認識してしまうのも防げる。
+        // 以前の .measurement はノイズ抑制と自動ゲイン調整を切るモードで、
+        // 静かな環境での測定用。ゲーム中の音声には向かない。
         let audioSession = AVAudioSession.sharedInstance()
-        try audioSession.setCategory(.record, mode: .measurement, options: .duckOthers)
+        try audioSession.setCategory(
+            .playAndRecord,
+            mode: .voiceChat,
+            options: [.defaultToSpeaker, .allowBluetooth, .duckOthers]
+        )
         try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
-        
+
         // 認識リクエストの作成
         recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
-        
+
         let inputNode = audioEngine.inputNode
-        
+
         guard let recognitionRequest = recognitionRequest else {
             throw STTError.recognitionRequestCreationFailed
         }
-        
+
         // リアルタイム結果を取得
         recognitionRequest.shouldReportPartialResults = true
-        recognitionRequest.requiresOnDeviceRecognition = false
+
+        // 端末内で認識する。
+        // サーバー認識は通信の往復ぶん遅れ、電波が悪いと精度も落ちる。
+        // ゲーム中は通信が混みやすいので、使えるなら端末内で処理する。
+        if speechRecognizer?.supportsOnDeviceRecognition == true {
+            recognitionRequest.requiresOnDeviceRecognition = true
+        }
+
+        // サーモンラン用語を渡して認識率を上げる
+        recognitionRequest.contextualStrings =
+            SalmonRunVocabulary.terms(for: AppStrings.shared.currentLanguage)
+        recognitionRequest.taskHint = .dictation
+        // 句読点の推定は遅延が増えるだけで、Wave指示には不要
+        recognitionRequest.addsPunctuation = false
         
         // 認識タスクの開始
         recognitionTask = speechRecognizer?.recognitionTask(with: recognitionRequest) { [weak self] result, error in
@@ -138,6 +168,9 @@ class STTManager: NSObject, ObservableObject {
             if let result = result {
                 let text = result.bestTranscription.formattedString
                 self?.recognizedText = text
+                self?.recognizedSegments = result.bestTranscription.segments.map {
+                    RecognizedSegment(text: $0.substring, timestamp: $0.timestamp)
+                }
                 self?.onTextRecognized?(text)
                 isFinal = result.isFinal
             }
@@ -178,6 +211,7 @@ class STTManager: NSObject, ObservableObject {
         
         isRecording = true
         recognizedText = ""
+        recognizedSegments = []
     }
     
     /// 録音停止
@@ -212,6 +246,14 @@ extension STTManager: SFSpeechRecognizerDelegate {
             errorMessage = nil
         }
     }
+}
+
+// MARK: - Segment
+
+/// 認識できた語と、その語が発話された録音開始からの秒数
+struct RecognizedSegment {
+    let text: String
+    let timestamp: TimeInterval
 }
 
 // MARK: - Error

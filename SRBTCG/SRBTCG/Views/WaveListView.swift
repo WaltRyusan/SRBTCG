@@ -434,6 +434,34 @@ struct WaveListView: View {
         return true
     }
     
+    /// 語ごとの発話時刻を見て、2秒ごとの枠へ割り振る
+    ///
+    /// 認識結果は確定するまで前の語が書き換わるため、
+    /// 文字列の差分を一定間隔で切り出すと語が欠けたり重複したりする。
+    /// segment.timestamp は録音開始からの秒数なので、
+    /// 毎回すべての語を組み直せばズレない。
+    private func assignSegmentsToSlots(_ segments: [RecognizedSegment], wave: Int) {
+        guard wave >= 1, wave <= WaveTiming.waveCount else { return }
+
+        var slots: [Int: [String]] = [:]
+        for segment in segments {
+            let slot = Int(segment.timestamp / WaveTiming.textInterval)
+            guard slot >= 0, slot < WaveTiming.slotsPerWave else { continue }
+            slots[slot, default: []].append(segment.text)
+        }
+
+        let base = (wave - 1) * WaveTiming.slotsPerWave
+        for slot in 0..<WaveTiming.slotsPerWave {
+            let index = base + slot
+            if let words = slots[slot] {
+                waveTexts[index] = words.joined()
+            } else {
+                // 前回の組み直しで入っていた語が別の枠へ移ることがある
+                waveTexts[index] = nil
+            }
+        }
+    }
+
     /// 録音セッション中のときだけ読み上げる
     ///
     /// speakはTaskで1フレーム後に走るため、中止した時点で積まれていた
@@ -515,31 +543,43 @@ struct WaveListView: View {
 
         var previousText = ""
         var lastSavedSlot = -1
+        var lastSegmentCount = 0
 
         recordingTimer?.invalidate()
         recordingTimer = Timer.scheduledTimer(withTimeInterval: WaveTiming.tick, repeats: true) { timer in
             let elapsed = min(clock.elapsed, WaveTiming.waveDuration)
             progressSecond = Int(elapsed)
 
-            // 2秒ごとの枠に入ったら、その枠へ差分テキストを保存する
-            let slot = Int(elapsed / WaveTiming.textInterval)
-            if slot > lastSavedSlot, slot < WaveTiming.slotsPerWave {
-                lastSavedSlot = slot
-
-                let currentText = sttManager.recognizedText
-                var newText = ""
-                if currentText.count > previousText.count {
-                    newText = String(currentText.dropFirst(previousText.count))
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                } else if currentText != previousText && !currentText.isEmpty {
-                    newText = currentText.trimmingCharacters(in: .whitespacesAndNewlines)
+            let segments = sttManager.recognizedSegments
+            if segments.contains(where: { $0.timestamp > 0 }) {
+                // 語ごとの発話時刻が取れているので、それで枠に割り振る。
+                // 認識は後から前の語を訂正するため、そのたびに組み直す。
+                if segments.count != lastSegmentCount {
+                    lastSegmentCount = segments.count
+                    assignSegmentsToSlots(segments, wave: progressWave)
                 }
+            } else {
+                // 発話時刻が取れない場合の従来方式。
+                // 2秒ごとの枠に入った時点の差分を、その枠のものとして扱う。
+                let slot = Int(elapsed / WaveTiming.textInterval)
+                if slot > lastSavedSlot, slot < WaveTiming.slotsPerWave {
+                    lastSavedSlot = slot
 
-                if !newText.isEmpty {
-                    let textIndex = (progressWave - 1) * WaveTiming.slotsPerWave + slot
-                    waveTexts[textIndex] = newText
+                    let currentText = sttManager.recognizedText
+                    var newText = ""
+                    if currentText.count > previousText.count {
+                        newText = String(currentText.dropFirst(previousText.count))
+                            .trimmingCharacters(in: .whitespacesAndNewlines)
+                    } else if currentText != previousText && !currentText.isEmpty {
+                        newText = currentText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    }
+
+                    if !newText.isEmpty {
+                        let textIndex = (progressWave - 1) * WaveTiming.slotsPerWave + slot
+                        waveTexts[textIndex] = newText
+                    }
+                    previousText = currentText
                 }
-                previousText = currentText
             }
 
             if clock.elapsed >= WaveTiming.waveDuration {
