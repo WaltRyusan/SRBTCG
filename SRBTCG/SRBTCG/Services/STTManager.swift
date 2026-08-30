@@ -19,6 +19,13 @@ class STTManager: NSObject, ObservableObject {
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
     private let audioEngine = AVAudioEngine()
+    /// inputNode にタップを張っているか
+    ///
+    /// removeTap のために inputNode へ触ると、その時点の
+    /// オーディオセッションでフォーマットが確定してしまう。
+    /// セッションを .record にする前に触ると 0Hz のフォーマットを掴み、
+    /// あとの installTap が例外で落ちる。張った時だけ外す。
+    private var isTapInstalled = false
     
     // 状態
     @Published var isRecording = false
@@ -137,7 +144,10 @@ class STTManager: NSObject, ObservableObject {
             
             if error != nil || isFinal {
                 self?.audioEngine.stop()
-                inputNode.removeTap(onBus: 0)
+                if self?.isTapInstalled == true {
+                    inputNode.removeTap(onBus: 0)
+                    self?.isTapInstalled = false
+                }
                 
                 self?.recognitionRequest = nil
                 self?.recognitionTask = nil
@@ -160,6 +170,7 @@ class STTManager: NSObject, ObservableObject {
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { buffer, _ in
             self.recognitionRequest?.append(buffer)
         }
+        isTapInstalled = true
         
         // オーディオエンジンの開始
         audioEngine.prepare()
@@ -175,9 +186,14 @@ class STTManager: NSObject, ObservableObject {
             audioEngine.stop()
         }
         recognitionRequest?.endAudio()
-        // engine が先に止まっていてもタップは残るため、isRunning に関わらず外す。
-        // 二重に installTap すると落ちるので、ここでの取りこぼしは致命的になる。
-        audioEngine.inputNode.removeTap(onBus: 0)
+
+        // engine が先に止まっていてもタップは残るため、isRunning では判断しない。
+        // ただし張っていないのに inputNode へ触るとフォーマットが
+        // 不正なまま確定してしまうので、フラグで見分ける。
+        if isTapInstalled {
+            audioEngine.inputNode.removeTap(onBus: 0)
+            isTapInstalled = false
+        }
 
         recognitionTask?.cancel()
         recognitionRequest = nil
