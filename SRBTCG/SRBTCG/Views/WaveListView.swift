@@ -24,6 +24,11 @@ struct WaveListView: View {
     @State private var clock = ElapsedClock()
     /// タイトル入力中かどうか（キーボード表示中は下部ボタンを隠す）
     @FocusState private var isEditingTitle: Bool
+    /// 再生を開始するWave
+    @State private var playbackStartWave = 1
+    /// 指定Waveから再生してよいかの確認
+    @State private var showWavePlaybackDialog = false
+    @State private var selectedWaveForPlayback = 1
 
     /// エクスポート/インポートのメニューを出すか
     /// v2で提供予定のため、v1ではfalseにしている
@@ -197,7 +202,8 @@ struct WaveListView: View {
             .sheet(isPresented: $showPlaybackView) {
                 PlaybackView(
                     title: title,
-                    waveTexts: waveTexts
+                    waveTexts: waveTexts,
+                    startWave: playbackStartWave
                 )
             }
 
@@ -267,9 +273,26 @@ struct WaveListView: View {
     }
     
     private func startPlaybackAfterConfirm() {
+        // 下部の再生ボタンは常に最初から
+        playbackStartWave = 1
         showPlaybackView = true
     }
     
+    /// 指定Waveから再生する
+    /// インターバルの秒数がズレたとき、途中から合流するために使う
+    private func startWavePlayback(from wave: Int) {
+        let hasText = (0..<WaveTiming.slotsPerWave).contains { slot in
+            let index = (wave - 1) * WaveTiming.slotsPerWave + slot
+            return !(waveTexts[index] ?? "").isEmpty
+        }
+        guard hasText else {
+            showNoTextDialog = true
+            return
+        }
+        selectedWaveForPlayback = wave
+        showWavePlaybackDialog = true
+    }
+
     private func startWaveRecording(wave: Int) {
         selectedWaveForRecording = wave
         showWaveRecordingDialog = true
@@ -464,18 +487,27 @@ struct WaveListView: View {
     @ViewBuilder
     private var waveSections: some View {
         ScrollView {
-            VStack(spacing: 12) {
+            // ヘッダーを上部に固定する。
+            // 展開したWaveをスクロールしても見出しが残るので、
+            // 途中の位置からでも閉じられる。
+            LazyVStack(spacing: 12, pinnedViews: [.sectionHeaders]) {
                 Spacer()
                     .frame(height: 20)
 
                 ForEach(1...5, id: \.self) { wave in
-                    WaveSection(
-                        wave: wave,
-                        waveTexts: $waveTexts,
-                        isExpanded: expandedWaves.contains(wave),
-                        onToggleExpand: { toggleWave(wave) },
-                        onWaveRecording: isRecording ? nil : { startWaveRecording(wave: $0) }
-                    )
+                    Section {
+                        if expandedWaves.contains(wave) {
+                            WaveIntervalList(wave: wave, waveTexts: $waveTexts)
+                        }
+                    } header: {
+                        WaveSectionHeader(
+                            wave: wave,
+                            isExpanded: expandedWaves.contains(wave),
+                            onToggleExpand: { toggleWave(wave) },
+                            onWaveRecording: isRecording ? nil : { startWaveRecording(wave: $0) },
+                            onWavePlayback: isRecording ? nil : { startWavePlayback(from: $0) }
+                        )
+                    }
                 }
 
                 // フローティングボタンに隠れないための余白
@@ -771,72 +803,83 @@ struct WaveListView: View {
 
 // MARK: - Wave Section
 
-struct WaveSection: View {
+/// Waveの見出し。スクロール中も上部に固定される
+struct WaveSectionHeader: View {
     let wave: Int
-    @Binding var waveTexts: [Int: String]
     let isExpanded: Bool
     let onToggleExpand: () -> Void
     let onWaveRecording: ((Int) -> Void)?
+    /// このWaveから再生する
+    let onWavePlayback: ((Int) -> Void)?
     @EnvironmentObject var appStrings: AppStrings
-    
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // ヘッダー（高さとボタンサイズ増加）
-            HStack(alignment: .center, spacing: 16) {
-                Text("Wave \(wave)")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                    .foregroundColor(.white)
-                
-                Spacer()
-                
-                // Wave別録音ボタン（大きく）
-                if let onWaveRecording = onWaveRecording {
-                    Button(action: {
-                        onWaveRecording(wave)
-                    }) {
-                        Image(systemName: "mic.circle.fill")
-                            .font(.system(size: 36))
-                            .foregroundColor(.white)
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.all, 8)
+        HStack(alignment: .center, spacing: 16) {
+            Text("Wave \(wave)")
+                .font(.largeTitle)
+                .fontWeight(.bold)
+                .foregroundColor(.white)
+
+            Spacer()
+
+            // このWaveから再生
+            // インターバルの秒数がズレたとき、途中から復帰するために使う
+            if let onWavePlayback = onWavePlayback {
+                Button(action: { onWavePlayback(wave) }) {
+                    Image(systemName: "play.circle.fill")
+                        .font(.system(size: 36))
+                        .foregroundColor(AppColors.golden)
                 }
-                
-                // 開くボタン（大きく）
-                Button(action: onToggleExpand) {
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 32, weight: .semibold))
+                .buttonStyle(.plain)
+                .padding(.all, 8)
+            }
+
+            // Wave別録音ボタン
+            if let onWaveRecording = onWaveRecording {
+                Button(action: { onWaveRecording(wave) }) {
+                    Image(systemName: "mic.circle.fill")
+                        .font(.system(size: 36))
                         .foregroundColor(.white)
                 }
                 .buttonStyle(.plain)
                 .padding(.all, 8)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 24)
-            .background(AppColors.waveHeader)
-            
-            // 50個のテキスト入力エリア（展開時）
-            if isExpanded {
-                VStack(spacing: 10) {
-                    ForEach(0..<50, id: \.self) { intervalIndex in
-                        WaveIntervalRow(
-                            wave: wave,
-                            intervalIndex: intervalIndex,
-                            waveTexts: $waveTexts
-                        )
-                    }
-                }
-                .padding(8)
-                .background(AppColors.surface)
+
+            // 開閉ボタン
+            Button(action: onToggleExpand) {
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 32, weight: .semibold))
+                    .foregroundColor(.white)
             }
+            .buttonStyle(.plain)
+            .padding(.all, 8)
         }
-        .cornerRadius(12)
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 24)
+        // 固定表示中に後ろのテキストが透けないよう不透明にする
+        .background(AppColors.waveHeader)
     }
 }
 
-// MARK: - Wave Interval Row
+/// Wave内のインターバル一覧
+struct WaveIntervalList: View {
+    let wave: Int
+    @Binding var waveTexts: [Int: String]
+
+    var body: some View {
+        VStack(spacing: 10) {
+            ForEach(0..<WaveTiming.slotsPerWave, id: \.self) { intervalIndex in
+                WaveIntervalRow(
+                    wave: wave,
+                    intervalIndex: intervalIndex,
+                    waveTexts: $waveTexts
+                )
+            }
+        }
+        .padding(8)
+        .background(AppColors.surface)
+    }
+}
 
 struct WaveIntervalRow: View {
     let wave: Int

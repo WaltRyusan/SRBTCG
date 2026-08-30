@@ -11,6 +11,8 @@ import AVFoundation
 struct PlaybackView: View {
     let title: String
     let waveTexts: [Int: String]
+    /// 再生を開始するWave（インターバルがズレたときの復帰用）
+    var startWave: Int = 1
     let waveCount: Int = WaveTiming.waveCount
     /// 実時刻ベースの経過時間
     @State private var clock = ElapsedClock()
@@ -209,7 +211,7 @@ struct PlaybackView: View {
         
         // カウントダウン開始
         startCountdown(duration: WaveTiming.initialCountdown, isInterval: false) {
-            progressWave = 1
+            progressWave = startWave
             startWavePlayback()
         }
     }
