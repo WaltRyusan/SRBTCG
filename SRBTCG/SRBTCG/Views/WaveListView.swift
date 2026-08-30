@@ -835,7 +835,7 @@ struct WaveSectionHeader: View {
     var body: some View {
         HStack(alignment: .center, spacing: 16) {
             Text("Wave \(wave)")
-                .font(.largeTitle)
+                .font(.title)
                 .fontWeight(.bold)
                 .foregroundColor(.white)
                 // ボタンが増えて幅が足りなくなると折り返してしまうため固定する
@@ -849,35 +849,35 @@ struct WaveSectionHeader: View {
             if let onWavePlayback = onWavePlayback {
                 Button(action: { onWavePlayback(wave) }) {
                     Image(systemName: "play.circle.fill")
-                        .font(.system(size: 36))
+                        .font(.system(size: 32))
                         .foregroundColor(AppColors.golden)
                 }
                 .buttonStyle(.plain)
-                .padding(.all, 8)
+                .padding(.all, 6)
             }
 
             // Wave別録音ボタン
             if let onWaveRecording = onWaveRecording {
                 Button(action: { onWaveRecording(wave) }) {
                     Image(systemName: "mic.circle.fill")
-                        .font(.system(size: 36))
+                        .font(.system(size: 32))
                         .foregroundColor(.white)
                 }
                 .buttonStyle(.plain)
-                .padding(.all, 8)
+                .padding(.all, 6)
             }
 
             // 開閉ボタン
             Button(action: onToggleExpand) {
                 Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 32, weight: .semibold))
+                    .font(.system(size: 28, weight: .semibold))
                     .foregroundColor(.white)
             }
             .buttonStyle(.plain)
-            .padding(.all, 8)
+            .padding(.all, 6)
         }
         .padding(.horizontal, 20)
-        .padding(.vertical, 24)
+        .padding(.vertical, 18)
         // 固定表示中に後ろのテキストが透けないよう不透明にする
         .background(AppColors.waveHeader)
     }
