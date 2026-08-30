@@ -6,6 +6,7 @@
 //
 
 import Speech
+import AVFoundation
 import SwiftUI
 import Combine
 
@@ -50,6 +51,28 @@ class STTManager: NSObject, ObservableObject {
         speechRecognizer?.delegate = self
     }
     
+    /// 録音に必要な許可をまとめて取得する
+    ///
+    /// マイクの許可は audioEngine.start() の時点で初めて要求されるため、
+    /// 事前に取っておかないとカウントダウン後にOSダイアログが割り込み、
+    /// 開始タイミングがずれる。
+    func requestPermissions() async -> Bool {
+        let speechGranted = await withCheckedContinuation { continuation in
+            SFSpeechRecognizer.requestAuthorization { status in
+                continuation.resume(returning: status == .authorized)
+            }
+        }
+
+        let micGranted = await withCheckedContinuation { continuation in
+            AVAudioApplication.requestRecordPermission { granted in
+                continuation.resume(returning: granted)
+            }
+        }
+
+        await MainActor.run { self.isAuthorized = speechGranted && micGranted }
+        return speechGranted && micGranted
+    }
+
     /// 権限リクエスト
     private func requestAuthorization() {
         SFSpeechRecognizer.requestAuthorization { [weak self] authStatus in

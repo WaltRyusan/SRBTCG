@@ -26,6 +26,10 @@ struct WaveListView: View {
     @FocusState private var isEditingTitle: Bool
     /// 再生を開始するWave
     @State private var playbackStartWave = 1
+    /// 許可の取得など、準備中の表示
+    @State private var isPreparingRecording = false
+    /// マイク/音声認識の許可が得られなかった
+    @State private var showPermissionDenied = false
     /// 指定Waveから再生してよいかの確認
     @State private var showWavePlaybackDialog = false
     @State private var selectedWaveForPlayback = 1
@@ -87,6 +91,10 @@ struct WaveListView: View {
             waveSections
             floatingButtons
 
+            if isPreparingRecording {
+                preparingOverlay
+            }
+
             // 録音中オーバーレイ
             if isRecording || isWaitingForStart {
                 RecordingOverlay(
@@ -124,7 +132,7 @@ struct WaveListView: View {
                 startRecordingAfterConfirm()
             }
             } message: {
-                Text("地面に着地したタイミングで録音を開始してください。準備ができたら「録音開始」をタップしてください。")
+                Text("「録音開始」をタップするとカウントダウンが始まり、0になるとWave1の録音を自動で開始します。")
         }
             .alert("再生確認", isPresented: $showPlaybackConfirmDialog) {
                 Button("キャンセル", role: .cancel) { }
@@ -294,6 +302,22 @@ struct WaveListView: View {
         showPlaybackView = true
     }
     
+    /// 準備中かどうか（許可の取得待ちなど）
+    /// 何も表示しないと固まったように見えるため、インジケータを出す
+    private var preparingOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.6).ignoresSafeArea()
+            VStack(spacing: 16) {
+                ProgressView()
+                    .scaleEffect(1.5)
+                    .tint(.white)
+                Text("準備中...")
+                    .foregroundColor(.white)
+                    .font(.headline)
+            }
+        }
+    }
+
     /// 指定Waveから再生する
     /// インターバルの秒数がズレたとき、途中から合流するために使う
     private func startWavePlayback(from wave: Int) {
@@ -346,14 +370,18 @@ struct WaveListView: View {
                 return
             }
             
-            if isWaitingForStart {
-                // 2回目のタップで実際に録音開始
-                recordingTimer?.invalidate()
-                actuallyStartRecording()
-            } else {
-                // 1回目のタップでダイアログ表示
-                showRecordingConfirmDialog = true
+            // 録音に必要な許可を先に取る。
+            // カウントダウン後にOSダイアログが出ると開始タイミングがずれるため。
+            isPreparingRecording = true
+            let granted = await sttManager.requestPermissions()
+            isPreparingRecording = false
+
+            guard granted else {
+                showPermissionDenied = true
+                return
             }
+
+            showRecordingConfirmDialog = true
         }
     }
     
@@ -367,8 +395,8 @@ struct WaveListView: View {
         startCountdownTimer()
     }
     
-    /// 着地待ちのカウントダウン
-    /// 0になっても自動では始めない（着地タイミングで手動タップさせる）
+    /// Wave1開始までのカウントダウン
+    /// 0になったらそのまま録音を開始する（着地時の再タップは廃止）
     private func startCountdownTimer() {
         clock.reset()
         let duration = WaveTiming.initialCountdown
@@ -392,6 +420,8 @@ struct WaveListView: View {
 
             if remaining <= 0 {
                 timer.invalidate()
+                // カウントダウンが終わったらそのまま録音を開始する
+                actuallyStartRecording()
             }
         }
     }
@@ -958,7 +988,6 @@ struct RecordingOverlay: View {
     let progressWave: Int
     let progressSecond: Int
     let countdownRemaining: Int
-    let onStart: () -> Void
     let onStop: () -> Void
     @EnvironmentObject var appStrings: AppStrings
     
@@ -974,25 +1003,12 @@ struct RecordingOverlay: View {
                         .font(.system(size: 48, weight: .bold))
                         .foregroundColor(.white)
                     
-                    Text(appStrings.tapWhenLanding)
+                    // カウントダウンが0になると自動で録音が始まる。
+                    // 以前は着地時にもう一度タップさせていたが、
+                    // 「録音」を押した後にまた「録音開始」が出て分かりにくかったため廃止した。
+                    Text("0になると自動で録音を開始します")
                         .font(.headline)
                         .foregroundColor(AppColors.golden)
-                    
-                    // 録音開始ボタン（着地時タップ用）
-                    Button(action: onStart) {
-                        HStack {
-                            Image(systemName: "mic.circle.fill")
-                                .font(.largeTitle)
-                            Text("録音開始")
-                                .font(.title2)
-                                .fontWeight(.bold)
-                        }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 40)
-                        .padding(.vertical, 20)
-                        .background(AppColors.danger)
-                        .cornerRadius(30)
-                    }
                 } else {
                     // 録音中表示
                     Text(appStrings.recording)
