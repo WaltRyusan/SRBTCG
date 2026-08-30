@@ -197,18 +197,28 @@ struct PlaybackView: View {
     }
     
     // MARK: - Methods
-    
+
+    /// 再生中のときだけ読み上げる
+    ///
+    /// speakはTaskで1フレーム後に走るため、停止ボタンを押した時点で
+    /// 積まれていた読み上げが stop() の後に実行され、
+    /// 止めたはずの音声が続けて流れていた。
+    private func announce(_ text: String) {
+        Task { @MainActor in
+            guard isPlaying else { return }
+            ttsManager.speak(text)
+        }
+    }
+
     private func startPlayback() {
         // 初期TTS設定
         ttsManager.rate = 0.5
         ttsManager.pitch = 0.8
         ttsManager.volume = 1.0
-        
+
         // 開始アナウンス
-        Task { @MainActor in
-            ttsManager.speak(appStrings.startingGuide)
-        }
-        
+        announce(appStrings.startingGuide)
+
         // カウントダウン開始
         startCountdown(duration: WaveTiming.initialCountdown, isInterval: false) {
             progressWave = startWave
@@ -239,13 +249,12 @@ struct PlaybackView: View {
                currentSecond > 0,
                currentSecond < lastSpokenSecond {
                 lastSpokenSecond = currentSecond
-                Task { @MainActor in
-                    ttsManager.speak("\(currentSecond)")
-                }
+                announce("\(currentSecond)")
             }
 
             if remaining <= 0 {
                 timer.invalidate()
+                guard isPlaying else { return }
                 next()
             }
         }
@@ -253,17 +262,15 @@ struct PlaybackView: View {
 
     /// 現在の progressWave を再生する
     /// 呼び出し前に progressWave を設定しておくこと
-    private func startWavePlayback(announce: Bool = true) {
+    private func startWavePlayback(announceStart: Bool = true) {
         isCountdown = false
         isInterval = false
         progressSecond = 0
         clock.reset()
 
-        if announce {
+        if announceStart {
             let waveStartMsg = appStrings.waveStart(progressWave)
-            Task { @MainActor in
-                ttsManager.speak(waveStartMsg)
-            }
+            announce(waveStartMsg)
             addToLog("Wave \(progressWave): \(waveStartMsg)")
         }
 
@@ -280,16 +287,15 @@ struct PlaybackView: View {
                 lastSpokenSlot = slot
                 let textIndex = (progressWave - 1) * WaveTiming.slotsPerWave + slot
                 if let text = waveTexts[textIndex], !text.isEmpty {
-                    Task { @MainActor in
-                        ttsManager.speak(text)
-                        currentAnnouncement = text
-                        addToLog("[残り\(Int(WaveTiming.waveDuration) - progressSecond)秒] \(text)")
-                    }
+                    announce(text)
+                    currentAnnouncement = text
+                    addToLog("[残り\(Int(WaveTiming.waveDuration) - progressSecond)秒] \(text)")
                 }
             }
 
             if clock.elapsed >= WaveTiming.waveDuration {
                 timer.invalidate()
+                guard isPlaying else { return }
                 if progressWave < WaveTiming.waveCount {
                     startInterval()
                 } else {
@@ -301,40 +307,39 @@ struct PlaybackView: View {
 
     private func startInterval() {
         let waveEndMsg = appStrings.waveEnd(progressWave)
-        Task { @MainActor in
-            ttsManager.speak(waveEndMsg)
-        }
+        announce(waveEndMsg)
         addToLog("Wave \(progressWave) 終了: \(waveEndMsg)")
         currentAnnouncement = ""
 
         startCountdown(duration: WaveTiming.interval, isInterval: true) {
             progressWave += 1
             let nextWaveMsg = appStrings.waveStart(progressWave)
-            Task { @MainActor in
-                ttsManager.speak(nextWaveMsg)
-                addToLog("Wave \(progressWave): \(nextWaveMsg)")
-            }
+            announce(nextWaveMsg)
+            addToLog("Wave \(progressWave): \(nextWaveMsg)")
             // ここでアナウンス済みなので再度読み上げない
-            startWavePlayback(announce: false)
+            startWavePlayback(announceStart: false)
         }
     }
 
     private func completePlayback() {
         playbackTimer?.invalidate()
         let completionMsg = appStrings.allClear
-        Task { @MainActor in
-            ttsManager.speak(completionMsg)
-        }
+        announce(completionMsg)
         addToLog("完了: \(completionMsg)")
         currentAnnouncement = completionMsg
-        
+
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
             dismiss()
         }
     }
-    
+
     private func stopPlayback() {
+        // 先にフラグを倒す。
+        // タイマーを止めても、既に積まれた読み上げTaskは後から走るため、
+        // announce側で弾けるようにしておく必要がある。
+        isPlaying = false
         playbackTimer?.invalidate()
+        playbackTimer = nil
         ttsManager.stop()
         dismiss()
     }

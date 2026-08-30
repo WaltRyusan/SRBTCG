@@ -28,19 +28,14 @@ struct WaveListView: View {
     @State private var playbackStartWave = 1
     /// 許可の取得など、準備中の表示
     @State private var isPreparingRecording = false
-    /// マイク/音声認識の許可が得られなかった
-    @State private var showPermissionDenied = false
-    /// 指定Waveから再生してよいかの確認
-    @State private var showWavePlaybackDialog = false
-    @State private var selectedWaveForPlayback = 1
+    /// Wave間のインターバル中かどうか
+    @State private var isInterval = false
 
     /// エクスポート/インポートのメニューを出すか
     /// v2で提供予定のため、v1ではfalseにしている
     private static let showsExportMenu = false
-    /// STT未購入で録音できないことを知らせる
-    @State private var showPurchaseRequired = false
-    /// 録音中止の確認
-    @State private var showStopConfirmation = false
+    /// 表示中の確認ダイアログ
+    @State private var dialog: WaveDialog?
     @State private var isWaitingForStart = false
     @State private var isPlaying = false
     @State private var expandedWaves = Set<Int>()
@@ -52,16 +47,8 @@ struct WaveListView: View {
     @State private var countdownRemaining = Int(ceil(WaveTiming.initialCountdown))
     @State private var recordingTimer: Timer?
     
-    // Wave別録音
-    @State private var showWaveRecordingDialog = false
-    @State private var selectedWaveForRecording = 1
-    @State private var showRecordingConfirmDialog = false
-    @State private var showPlaybackConfirmDialog = false
-    @State private var showNoTextDialog = false
     @State private var showMenu = false
     @State private var showDocumentPicker = false
-    @State private var importError: String?
-    @State private var showImportError = false
     @State private var currentInitialTitle: String = ""
     
     @StateObject private var ttsManager = TTSManager.shared
@@ -96,9 +83,11 @@ struct WaveListView: View {
             }
 
             // 録音中オーバーレイ
-            if isRecording || isWaitingForStart {
+            if isRecording || isWaitingForStart || isInterval {
                 RecordingOverlay(
                     isWaitingForStart: isWaitingForStart,
+                    isInterval: isInterval,
+                    nextWave: progressWave + 1,
                     progressWave: progressWave,
                     progressSecond: progressSecond,
                     countdownRemaining: countdownRemaining,
@@ -112,55 +101,114 @@ struct WaveListView: View {
         dialogs(chrome)
     }
 
-    /// ダイアログ群
+    /// 確認ダイアログ
+    ///
+    /// 以前は用途ごとに .alert を7個チェーンしていたが、
+    /// SwiftUIは同じビューに複数のalertを重ねると取りこぼすことがある。
+    /// 加えてWave別再生と権限拒否は .alert 自体が無く、
+    /// フラグを立てても何も出ないままだった。
+    /// 同時に出せるのは1つなので、状態も1つにまとめる。
+    private enum WaveDialog: Identifiable {
+        case recordingConfirm
+        case waveRecordingConfirm(Int)
+        case playbackConfirm
+        case wavePlaybackConfirm(Int)
+        case noText
+        case stopConfirm
+        case purchaseRequired
+        case permissionDenied
+        case importError(String)
+
+        var id: String {
+            switch self {
+            case .recordingConfirm: return "recordingConfirm"
+            case .waveRecordingConfirm(let wave): return "waveRecording-\(wave)"
+            case .playbackConfirm: return "playbackConfirm"
+            case .wavePlaybackConfirm(let wave): return "wavePlayback-\(wave)"
+            case .noText: return "noText"
+            case .stopConfirm: return "stopConfirm"
+            case .purchaseRequired: return "purchaseRequired"
+            case .permissionDenied: return "permissionDenied"
+            case .importError: return "importError"
+            }
+        }
+
+        var title: String {
+            switch self {
+            case .recordingConfirm: return "録音確認"
+            case .waveRecordingConfirm(let wave): return "Wave \(wave) から録音"
+            case .playbackConfirm: return "再生確認"
+            case .wavePlaybackConfirm(let wave): return "Wave \(wave) から再生"
+            case .noText: return "テキストなし"
+            case .stopConfirm: return "録音を中止しますか？"
+            case .purchaseRequired: return "録音機能の購入が必要です"
+            case .permissionDenied: return "マイクを使用できません"
+            case .importError: return "インポートエラー"
+            }
+        }
+
+        var message: String {
+            switch self {
+            case .recordingConfirm:
+                return "「録音開始」をタップするとカウントダウンが始まり、0になるとWave1の録音を自動で開始します。"
+            case .waveRecordingConfirm(let wave):
+                return "Wave \(wave) から録音を開始します。カウントダウンが0になったら自動で録音を始めます。"
+            case .playbackConfirm:
+                return "地面に着地したタイミングで再生を開始してください。準備ができたら「再生開始」をタップしてください。"
+            case .wavePlaybackConfirm(let wave):
+                return "Wave \(wave) から再生します。インターバルがズレたときの合流に使ってください。"
+            case .noText:
+                return "再生するテキストがありません。"
+            case .stopConfirm:
+                return "ここまでに録音した内容だけが記録されます。中止した時点より後のWaveは記録されません。"
+            case .purchaseRequired:
+                return "音声を文字にして記録する機能は有料です。設定画面から購入できます。"
+            case .permissionDenied:
+                return "録音するにはマイクと音声認識の許可が必要です。設定アプリから許可してください。"
+            case .importError(let detail):
+                return detail
+            }
+        }
+    }
+
+    /// ダイアログ
     /// bodyのmodifierチェーンが長すぎて型チェックが通らないため分けている
-    @ViewBuilder
     private func dialogs<C: View>(_ base: C) -> some View {
-        base
-            .alert("Wave \(selectedWaveForRecording) から録音", isPresented: $showWaveRecordingDialog) {
-                Button("キャンセル", role: .cancel) { }
-                Button("録音開始") {
-                startWaveSpecificRecording()
+        base.alert(
+            dialog?.title ?? "",
+            isPresented: Binding(
+                get: { dialog != nil },
+                set: { if !$0 { dialog = nil } }
+            ),
+            presenting: dialog,
+            actions: { dialogActions(for: $0) },
+            message: { Text($0.message) }
+        )
+    }
+
+    @ViewBuilder
+    private func dialogActions(for item: WaveDialog) -> some View {
+        switch item {
+        case .recordingConfirm:
+            Button("キャンセル", role: .cancel) { }
+            Button("録音開始") { startRecordingAfterConfirm() }
+        case .waveRecordingConfirm(let wave):
+            Button("キャンセル", role: .cancel) { }
+            Button("録音開始") { startWaveSpecificRecording(from: wave) }
+        case .playbackConfirm:
+            Button("キャンセル", role: .cancel) { }
+            Button("再生開始") { startPlaybackAfterConfirm() }
+        case .wavePlaybackConfirm(let wave):
+            Button("キャンセル", role: .cancel) { }
+            Button("再生開始") {
+                playbackStartWave = wave
+                showPlaybackView = true
             }
-            } message: {
-                Text("Wave \(selectedWaveForRecording) から録音を開始します。地面に着地したタイミングで録音開始してください。")
-        }
-            .alert("録音確認", isPresented: $showRecordingConfirmDialog) {
-                Button("キャンセル", role: .cancel) { }
-                Button("録音開始") {
-                startRecordingAfterConfirm()
-            }
-            } message: {
-                Text("「録音開始」をタップするとカウントダウンが始まり、0になるとWave1の録音を自動で開始します。")
-        }
-            .alert("再生確認", isPresented: $showPlaybackConfirmDialog) {
-                Button("キャンセル", role: .cancel) { }
-                Button("再生開始") {
-                startPlaybackAfterConfirm()
-            }
-            } message: {
-                Text("地面に着地したタイミングで再生を開始してください。準備ができたら「再生開始」をタップしてください。")
-        }
-            .alert("テキストなし", isPresented: $showNoTextDialog) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text("再生するテキストがありません。")
-        }
-            .alert("録音を中止しますか？", isPresented: $showStopConfirmation) {
-                Button("続ける", role: .cancel) { }
-                Button("中止する", role: .destructive) { stopRecording() }
-            } message: {
-                Text("ここまでに録音した内容だけが記録されます。中止した時点より後のWaveは記録されません。")
-        }
-            .alert("STT機能が必要です", isPresented: $showPurchaseRequired) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text("音声での録音にはSTT機能の購入が必要です。設定画面から購入できます。")
-        }
-            .alert("インポートエラー", isPresented: $showImportError) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text(importError ?? "不明なエラー")
+        case .stopConfirm:
+            Button("続ける", role: .cancel) { }
+            Button("中止する", role: .destructive) { stopRecording() }
+        case .noText, .purchaseRequired, .permissionDenied, .importError:
+            Button("OK", role: .cancel) { }
         }
     }
 
@@ -288,11 +336,7 @@ struct WaveListView: View {
         // テキストが存在するかチェック
         let hasAnyText = waveTexts.values.contains { !$0.isEmpty }
         
-        if hasAnyText {
-            showPlaybackConfirmDialog = true
-        } else {
-            showNoTextDialog = true
-        }
+        dialog = hasAnyText ? .playbackConfirm : .noText
     }
     
     private func startPlaybackAfterConfirm() {
@@ -325,72 +369,78 @@ struct WaveListView: View {
             return !(waveTexts[index] ?? "").isEmpty
         }
         guard hasText else {
-            showNoTextDialog = true
+            dialog = .noText
             return
         }
-        selectedWaveForPlayback = wave
-        showWavePlaybackDialog = true
+        dialog = .wavePlaybackConfirm(wave)
     }
 
     private func startWaveRecording(wave: Int) {
-        selectedWaveForRecording = wave
-        showWaveRecordingDialog = true
-    }
-    
-    private func startWaveSpecificRecording() {
         Task {
-            // STT機能の課金チェック
-            let hasPurchased = await purchaseManager.hasSttExport()
-            if !hasPurchased {
-                showPurchaseRequired = true
-                return
-            }
-            
-            // 指定Waveからの録音を開始
-            progressWave = selectedWaveForRecording
-            progressSecond = 0
-            isWaitingForStart = true
-            countdownRemaining = Int(ceil(WaveTiming.initialCountdown))
-            
-            Task { @MainActor in
-                ttsManager.speak("Wave \(selectedWaveForRecording)から録音開始。15秒後に着地タイミングでタップしてください")
-            }
-            startCountdownTimer()
+            guard await prepareRecording() else { return }
+            dialog = .waveRecordingConfirm(wave)
         }
     }
-    
+
+    private func startWaveSpecificRecording(from wave: Int) {
+        // 指定Waveからの録音を開始。
+        // カウントダウンが0になったら startCountdownTimer が
+        // そのまま actuallyStartRecording を呼ぶ。
+        progressWave = wave
+        progressSecond = 0
+        isWaitingForStart = true
+
+        announce("Wave \(wave)から録音を開始します")
+        startCountdownTimer()
+    }
+
     private func startRecording() {
         Task {
-            // STT機能の課金チェック
-            // 未購入のまま無言でreturnしていたため、押しても何も起きなかった
-            let hasPurchased = await purchaseManager.hasSttExport()
-            if !hasPurchased {
-                showPurchaseRequired = true
-                return
-            }
-            
-            // 録音に必要な許可を先に取る。
-            // カウントダウン後にOSダイアログが出ると開始タイミングがずれるため。
-            isPreparingRecording = true
-            let granted = await sttManager.requestPermissions()
-            isPreparingRecording = false
-
-            guard granted else {
-                showPermissionDenied = true
-                return
-            }
-
-            showRecordingConfirmDialog = true
+            guard await prepareRecording() else { return }
+            dialog = .recordingConfirm
         }
     }
+
+    /// 録音前の課金チェックと許可取得
+    ///
+    /// マイクの許可は audioEngine.start() まで要求されないため、
+    /// カウントダウン前に取っておかないとOSダイアログが割り込んで
+    /// 開始タイミングがずれる。
+    private func prepareRecording() async -> Bool {
+        // 未購入のまま無言でreturnしていたため、押しても何も起きなかった
+        let hasPurchased = await purchaseManager.hasSttExport()
+        guard hasPurchased else {
+            dialog = .purchaseRequired
+            return false
+        }
+
+        isPreparingRecording = true
+        let granted = await sttManager.requestPermissions()
+        isPreparingRecording = false
+
+        guard granted else {
+            dialog = .permissionDenied
+            return false
+        }
+        return true
+    }
     
+    /// 録音セッション中のときだけ読み上げる
+    ///
+    /// speakはTaskで1フレーム後に走るため、中止した時点で積まれていた
+    /// 読み上げが停止処理の後に実行され、止めたあとも喋り続けていた。
+    private func announce(_ text: String) {
+        Task { @MainActor in
+            guard isRecording || isInterval || isWaitingForStart else { return }
+            ttsManager.speak(text)
+        }
+    }
+
     private func startRecordingAfterConfirm() {
         // ダイアログ確認後にカウントダウン開始
         isWaitingForStart = true
         countdownRemaining = Int(ceil(WaveTiming.initialCountdown))
-        Task { @MainActor in
-            ttsManager.speak(appStrings.startingRecording)
-        }
+        announce(appStrings.startingRecording)
         startCountdownTimer()
     }
     
@@ -412,13 +462,14 @@ struct WaveListView: View {
                currentSecond > 0,
                currentSecond < lastSpokenSecond {
                 lastSpokenSecond = currentSecond
-                Task { @MainActor in
-                    ttsManager.speak("\(currentSecond)")
-                }
+                announce("\(currentSecond)")
             }
 
             if remaining <= 0 {
                 timer.invalidate()
+                // 中止済みなら何もしない。
+                // タイマーを止めても、この発火自体は既に走り始めている。
+                guard isWaitingForStart else { return }
                 // カウントダウンが終わったらそのまま録音を開始する
                 actuallyStartRecording()
             }
@@ -441,9 +492,7 @@ struct WaveListView: View {
         progressSecond = 0
         clock.reset()
 
-        Task { @MainActor in
-            ttsManager.speak(appStrings.waveStart(progressWave))
-        }
+        announce(appStrings.waveStart(progressWave))
 
         do {
             try sttManager.startRecording()
@@ -484,6 +533,7 @@ struct WaveListView: View {
 
             if clock.elapsed >= WaveTiming.waveDuration {
                 timer.invalidate()
+                guard isRecording else { return }
                 if progressWave < WaveTiming.waveCount {
                     startRecordingInterval()
                 } else {
@@ -494,10 +544,17 @@ struct WaveListView: View {
     }
 
     /// Wave間のインターバル。終了後に次のWaveの録音を始める
+    /// Wave間のインターバル
+    /// 「次のWave開始まで N秒」を表示し、0になったら次のWaveの録音を自動で開始する
     private func startRecordingInterval() {
-        Task { @MainActor in
-            ttsManager.speak(appStrings.waveEnd(progressWave))
-        }
+        isRecording = false
+        isInterval = true
+
+        // インターバル中はマイクを離す。
+        // 掴んだままだと次のWaveでオーディオエンジンを二重に初期化することになる。
+        sttManager.stopRecording()
+
+        announce(appStrings.waveEnd(progressWave))
 
         clock.reset()
         countdownRemaining = Int(ceil(WaveTiming.interval))
@@ -513,13 +570,13 @@ struct WaveListView: View {
                currentSecond > 0,
                currentSecond < lastSpokenSecond {
                 lastSpokenSecond = currentSecond
-                Task { @MainActor in
-                    ttsManager.speak("\(currentSecond)")
-                }
+                announce("\(currentSecond)")
             }
 
             if remaining <= 0 {
                 timer.invalidate()
+                guard isInterval else { return }
+                isInterval = false
                 progressWave += 1
                 sttManager.recognizedText = ""
                 actuallyStartRecording()
@@ -648,8 +705,8 @@ struct WaveListView: View {
     }
 
     private func requestStopRecording() {
-        if isRecording {
-            showStopConfirmation = true
+        if isRecording || isInterval {
+            dialog = .stopConfirm
         } else {
             // カウントダウン中のキャンセルは記録が無いので確認不要
             stopRecording()
@@ -657,20 +714,25 @@ struct WaveListView: View {
     }
 
     private func stopRecording() {
+        let wasRecording = isRecording || isInterval
         isRecording = false
+        isInterval = false
         isWaitingForStart = false
         recordingTimer?.invalidate()
         recordingTimer = nil
         sttManager.stopRecording()
-        
-        // 最後のWaveのテキストを保存
-        if progressWave > 0 && progressWave <= 5 {
-            waveTexts[progressWave] = sttManager.recognizedText
+
+        // テキストは録音タイマーが2秒枠ごとに
+        // waveTexts[(wave-1)*slotsPerWave + slot] へ書き込んでいる。
+        // ここで waveTexts[progressWave] に代入していたが、
+        // それは「Wave番号」ではなく「Wave1の1〜5番目の枠」を指すインデックスで、
+        // 停止するたびにWave1の冒頭を認識結果全文で上書きしていた。
+        if wasRecording {
             Task { @MainActor in
                 ttsManager.speak(appStrings.recordingCompleted)
             }
         }
-        
+
         saveData()
         
         // リセット
@@ -680,12 +742,10 @@ struct WaveListView: View {
     }
     
     private func setupSTT() {
-        sttManager.onTextRecognized = { text in
-            // リアルタイムで現在のWaveにテキストを反映
-            if progressWave > 0 && progressWave <= 5 {
-                waveTexts[progressWave] = text
-            }
-        }
+        // 認識結果の保存は録音タイマー側が2秒枠ごとに行う。
+        // ここでも waveTexts へ書いていたが、Wave番号を枠インデックスとして
+        // 使っていたため認識のたびにWave1の先頭が壊れていた。
+        sttManager.onTextRecognized = nil
     }
     
     private func saveData() {
@@ -793,8 +853,7 @@ struct WaveListView: View {
             guard let json = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
                   let importedTitle = json["title"] as? String,
                   let stringWaveTexts = json["waveTexts"] as? [String: String] else {
-                importError = "JSONファイルの形式が正しくありません"
-                showImportError = true
+                dialog = .importError("JSONファイルの形式が正しくありません")
                 return
             }
             
@@ -843,8 +902,7 @@ struct WaveListView: View {
             print("インポート成功: \(finalTitle)")
             
         } catch {
-            importError = "ファイルの読み込みに失敗しました: \(error.localizedDescription)"
-            showImportError = true
+            dialog = .importError("ファイルの読み込みに失敗しました: \(error.localizedDescription)")
         }
     }
 }
@@ -984,6 +1042,10 @@ struct WaveIntervalRow: View {
 
 struct RecordingOverlay: View {
     let isWaitingForStart: Bool
+    /// Wave間のインターバル中かどうか
+    var isInterval: Bool = false
+    /// インターバル明けに始まるWave
+    var nextWave: Int = 1
     let progressWave: Int
     let progressSecond: Int
     let countdownRemaining: Int
@@ -996,7 +1058,24 @@ struct RecordingOverlay: View {
                 .ignoresSafeArea()
             
             VStack(spacing: 40) {
-                if isWaitingForStart {
+                if isInterval {
+                    // Wave間のインターバル
+                    Text("Wave \(progressWave) 終了")
+                        .font(.title2)
+                        .foregroundColor(AppColors.golden)
+
+                    Text("次のWave \(nextWave) 開始まで")
+                        .font(.headline)
+                        .foregroundColor(.white)
+
+                    Text("\(countdownRemaining)秒")
+                        .font(.system(size: 64, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white)
+
+                    Text("0になると自動で録音を再開します")
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.7))
+                } else if isWaitingForStart {
                     // カウントダウン表示
                     Text(appStrings.countdownLabel(countdownRemaining))
                         .font(.system(size: 48, weight: .bold))

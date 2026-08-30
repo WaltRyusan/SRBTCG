@@ -98,12 +98,14 @@ class STTManager: NSObject, ObservableObject {
     
     /// 録音開始
     func startRecording() throws {
-        // 既存のタスクがあればキャンセル
-        if recognitionTask != nil {
-            recognitionTask?.cancel()
-            recognitionTask = nil
-        }
-        
+        // 前回の録音を確実に畳んでから始める。
+        //
+        // recognitionTask.cancel() だけでは engine の停止と removeTap が
+        // 完了ハンドラ経由で非同期に走るため、この下の installTap に間に合わない。
+        // タップが残ったまま同じバスへ installTap すると AVAudioEngine が
+        // NSException を投げてアプリごと落ちる（Wave2の開始で発生していた）。
+        stopRecording()
+
         // オーディオセッションの設定
         let audioSession = AVAudioSession.sharedInstance()
         try audioSession.setCategory(.record, mode: .measurement, options: .duckOthers)
@@ -161,10 +163,12 @@ class STTManager: NSObject, ObservableObject {
     func stopRecording() {
         if audioEngine.isRunning {
             audioEngine.stop()
-            recognitionRequest?.endAudio()
-            audioEngine.inputNode.removeTap(onBus: 0)
         }
-        
+        recognitionRequest?.endAudio()
+        // engine が先に止まっていてもタップは残るため、isRunning に関わらず外す。
+        // 二重に installTap すると落ちるので、ここでの取りこぼしは致命的になる。
+        audioEngine.inputNode.removeTap(onBus: 0)
+
         recognitionTask?.cancel()
         recognitionRequest = nil
         recognitionTask = nil
