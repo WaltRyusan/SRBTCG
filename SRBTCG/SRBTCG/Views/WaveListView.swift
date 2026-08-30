@@ -20,6 +20,10 @@ struct WaveListView: View {
     @State private var title: String = ""
     @State private var waveTexts: [Int: String] = [:] // 0-249 のインデックスで管理（5waves × 50entries）
     @State private var isRecording = false
+    /// STT未購入で録音できないことを知らせる
+    @State private var showPurchaseRequired = false
+    /// 録音中止の確認
+    @State private var showStopConfirmation = false
     @State private var isWaitingForStart = false
     @State private var isPlaying = false
     @State private var expandedWaves = Set<Int>()
@@ -51,130 +55,97 @@ struct WaveListView: View {
         self.initialWaveTexts = initialWaveTexts
     }
     
-    var body: some View {
+    /// 画面本体（modifierを付ける前の中身）
+    /// bodyに全部書くと型チェックが通らないため分けている
+    @ViewBuilder
+    private var content: some View {
         ZStack {
-                AppColors.background
+            AppColors.background
+                .ignoresSafeArea()
+
+            // ステータスバーの背景色
+            VStack {
+                AppColors.surface
+                    .frame(height: 0)
                     .ignoresSafeArea()
-                
-                // ステータスバーの背景色
-                VStack {
-                    AppColors.surface
-                        .frame(height: 0)
-                        .ignoresSafeArea()
-                    Spacer()
-                }
-                
-                ScrollView {
-                    VStack(spacing: 12) {
-                        // 上部マージン
-                        Spacer()
-                            .frame(height: 20)
-                        
-                        // 各Waveセクション
-                        ForEach(1...5, id: \.self) { wave in
-                            WaveSection(
-                                wave: wave,
-                                waveTexts: $waveTexts,
-                                isExpanded: expandedWaves.contains(wave),
-                                onToggleExpand: { toggleWave(wave) },
-                                onWaveRecording: isRecording ? nil : { startWaveRecording(wave: $0) }
-                            )
-                        }
-                        
-                        // 下部余白
-                        Spacer()
-                            .frame(height: 100)
-                    }
-                }
-                
-                // フローティングボタン（画面下部固定）
-                if !isRecording && !isWaitingForStart {
-                    VStack {
-                        Spacer()
-                        HStack {
-                            Spacer()
-                            
-                            // 再生ボタン
-                            Button(action: startPlayback) {
-                                HStack(spacing: 10) {
-                                    Image(systemName: "play.circle.fill")
-                                        .font(.system(size: 28))
-                                    Text("再生")
-                                        .font(.system(size: 18, weight: .semibold))
-                                }
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 24)
-                                .padding(.vertical, 16)
-                                .background(
-                                    LinearGradient(
-                                        gradient: Gradient(colors: [AppColors.primary, AppColors.primary.opacity(0.8)]),
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                                .cornerRadius(25)
-                                .shadow(color: AppColors.primary.opacity(0.3), radius: 8, x: 0, y: 4)
-                            }
-                            .disabled(isRecording)
-                            
-                            Spacer()
-                                .frame(width: 16)
-                            
-                            // 録音ボタン
-                            Button(action: startRecording) {
-                                HStack(spacing: 10) {
-                                    Image(systemName: "mic.circle.fill")
-                                        .font(.system(size: 28))
-                                    Text(isWaitingForStart ? "着地時にタップ" : "録音")
-                                        .font(.system(size: 18, weight: .semibold))
-                                }
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 24)
-                                .padding(.vertical, 16)
-                                .background(
-                                    LinearGradient(
-                                        gradient: Gradient(colors: [AppColors.danger, AppColors.danger.opacity(0.8)]),
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                                .cornerRadius(25)
-                                .shadow(color: AppColors.danger.opacity(0.3), radius: 8, x: 0, y: 4)
-                            }
-                            .disabled(isPlaying || !sttManager.isAuthorized)
-                            
-                            Spacer()
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 30)
-                        .background(
-                            LinearGradient(
-                                gradient: Gradient(stops: [
-                                    .init(color: Color.clear, location: 0),
-                                    .init(color: AppColors.background.opacity(0.8), location: 0.3),
-                                    .init(color: AppColors.background, location: 1)
-                                ]),
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                            .frame(height: 100)
-                        )
-                    }
-                    .ignoresSafeArea(.container, edges: .bottom)
-                }
-                
-                // 録音中オーバーレイ
-                if isRecording || isWaitingForStart {
-                    RecordingOverlay(
-                        isWaitingForStart: isWaitingForStart,
-                        progressWave: progressWave,
-                        progressSecond: progressSecond,
-                        countdownRemaining: countdownRemaining,
-                        onStart: startRecording,
-                        onStop: stopRecording
-                    )
-                }
+                Spacer()
             }
+
+            waveSections
+            floatingButtons
+
+            // 録音中オーバーレイ
+            if isRecording || isWaitingForStart {
+                RecordingOverlay(
+                    isWaitingForStart: isWaitingForStart,
+                    progressWave: progressWave,
+                    progressSecond: progressSecond,
+                    countdownRemaining: countdownRemaining,
+                    onStart: startRecording,
+                    onStop: requestStopRecording
+                )
+            }
+        }
+    }
+
+    var body: some View {
+        dialogs(chrome)
+    }
+
+    /// ダイアログ群
+    /// bodyのmodifierチェーンが長すぎて型チェックが通らないため分けている
+    @ViewBuilder
+    private func dialogs<C: View>(_ base: C) -> some View {
+        base
+            .alert("Wave \(selectedWaveForRecording) から録音", isPresented: $showWaveRecordingDialog) {
+                Button("キャンセル", role: .cancel) { }
+                Button("録音開始") {
+                startWaveSpecificRecording()
+            }
+            } message: {
+                Text("Wave \(selectedWaveForRecording) から録音を開始します。地面に着地したタイミングで録音開始してください。")
+        }
+            .alert("録音確認", isPresented: $showRecordingConfirmDialog) {
+                Button("キャンセル", role: .cancel) { }
+                Button("録音開始") {
+                startRecordingAfterConfirm()
+            }
+            } message: {
+                Text("地面に着地したタイミングで録音を開始してください。準備ができたら「録音開始」をタップしてください。")
+        }
+            .alert("再生確認", isPresented: $showPlaybackConfirmDialog) {
+                Button("キャンセル", role: .cancel) { }
+                Button("再生開始") {
+                startPlaybackAfterConfirm()
+            }
+            } message: {
+                Text("地面に着地したタイミングで再生を開始してください。準備ができたら「再生開始」をタップしてください。")
+        }
+            .alert("テキストなし", isPresented: $showNoTextDialog) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("再生するテキストがありません。")
+        }
+            .alert("録音を中止しますか？", isPresented: $showStopConfirmation) {
+                Button("続ける", role: .cancel) { }
+                Button("中止する", role: .destructive) { stopRecording() }
+            } message: {
+                Text("ここまでに録音した内容だけが記録されます。中止した時点より後のWaveは記録されません。")
+        }
+            .alert("STT機能が必要です", isPresented: $showPurchaseRequired) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("音声での録音にはSTT機能の購入が必要です。設定画面から購入できます。")
+        }
+            .alert("インポートエラー", isPresented: $showImportError) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(importError ?? "不明なエラー")
+        }
+    }
+
+    private var chrome: some View {
+        content
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(AppColors.surface.opacity(0.9), for: .navigationBar)
@@ -213,40 +184,7 @@ struct WaveListView: View {
                     waveTexts: waveTexts
                 )
             }
-            .alert("Wave \(selectedWaveForRecording) から録音", isPresented: $showWaveRecordingDialog) {
-                Button("キャンセル", role: .cancel) { }
-                Button("録音開始") {
-                    startWaveSpecificRecording()
-                }
-            } message: {
-                Text("Wave \(selectedWaveForRecording) から録音を開始します。地面に着地したタイミングで録音開始してください。")
-            }
-            .alert("録音確認", isPresented: $showRecordingConfirmDialog) {
-                Button("キャンセル", role: .cancel) { }
-                Button("録音開始") {
-                    startRecordingAfterConfirm()
-                }
-            } message: {
-                Text("地面に着地したタイミングで録音を開始してください。準備ができたら「録音開始」をタップしてください。")
-            }
-            .alert("再生確認", isPresented: $showPlaybackConfirmDialog) {
-                Button("キャンセル", role: .cancel) { }
-                Button("再生開始") {
-                    startPlaybackAfterConfirm()
-                }
-            } message: {
-                Text("地面に着地したタイミングで再生を開始してください。準備ができたら「再生開始」をタップしてください。")
-            }
-            .alert("テキストなし", isPresented: $showNoTextDialog) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text("再生するテキストがありません。")
-            }
-            .alert("インポートエラー", isPresented: $showImportError) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text(importError ?? "不明なエラー")
-            }
+
             .sheet(isPresented: $showDocumentPicker) {
                 JSONDocumentPicker(onPicked: handleImportedFile)
             }
@@ -325,7 +263,7 @@ struct WaveListView: View {
             // STT機能の課金チェック
             let hasPurchased = await purchaseManager.hasSttExport()
             if !hasPurchased {
-                // TODO: 課金画面を表示
+                showPurchaseRequired = true
                 return
             }
             
@@ -345,9 +283,10 @@ struct WaveListView: View {
     private func startRecording() {
         Task {
             // STT機能の課金チェック
+            // 未購入のまま無言でreturnしていたため、押しても何も起きなかった
             let hasPurchased = await purchaseManager.hasSttExport()
             if !hasPurchased {
-                // TODO: 課金画面を表示
+                showPurchaseRequired = true
                 return
             }
             
@@ -481,6 +420,123 @@ struct WaveListView: View {
         }
     }
     
+    /// 録音中止の要求。中止すると取り消せないため確認を挟む
+    /// Wave1〜5のセクション一覧
+    @ViewBuilder
+    private var waveSections: some View {
+        ScrollView {
+            VStack(spacing: 12) {
+                Spacer()
+                    .frame(height: 20)
+
+                ForEach(1...5, id: \.self) { wave in
+                    WaveSection(
+                        wave: wave,
+                        waveTexts: $waveTexts,
+                        isExpanded: expandedWaves.contains(wave),
+                        onToggleExpand: { toggleWave(wave) },
+                        onWaveRecording: isRecording ? nil : { startWaveRecording(wave: $0) }
+                    )
+                }
+
+                // フローティングボタンに隠れないための余白
+                Spacer()
+                    .frame(height: 100)
+            }
+        }
+    }
+
+    /// 画面下部の再生・録音ボタン
+    /// 録音中・カウントダウン中は表示しない（録音中はオーバーレイ側で操作する）
+    @ViewBuilder
+    private var floatingButtons: some View {
+        // フローティングボタン（画面下部固定）
+        if !isRecording && !isWaitingForStart {
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    
+                    // 再生ボタン
+                    Button(action: startPlayback) {
+                        HStack(spacing: 10) {
+                            Image(systemName: "play.circle.fill")
+                                .font(.system(size: 28))
+                            Text("再生")
+                                .font(.system(size: 18, weight: .semibold))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 16)
+                        .background(
+                            LinearGradient(
+                                gradient: Gradient(colors: [AppColors.primary, AppColors.primary.opacity(0.8)]),
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .cornerRadius(25)
+                        .shadow(color: AppColors.primary.opacity(0.3), radius: 8, x: 0, y: 4)
+                    }
+                    .disabled(isRecording)
+                    
+                    Spacer()
+                        .frame(width: 16)
+                    
+                    // 録音ボタン
+                    Button(action: startRecording) {
+                        HStack(spacing: 10) {
+                            Image(systemName: "mic.circle.fill")
+                                .font(.system(size: 28))
+                            Text(isWaitingForStart ? "着地時にタップ" : "録音")
+                                .font(.system(size: 18, weight: .semibold))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 16)
+                        .background(
+                            LinearGradient(
+                                gradient: Gradient(colors: [AppColors.danger, AppColors.danger.opacity(0.8)]),
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .cornerRadius(25)
+                        .shadow(color: AppColors.danger.opacity(0.3), radius: 8, x: 0, y: 4)
+                    }
+                    .disabled(isPlaying || !sttManager.isAuthorized)
+                    
+                    Spacer()
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 30)
+                .background(
+                    LinearGradient(
+                        gradient: Gradient(stops: [
+                            .init(color: Color.clear, location: 0),
+                            .init(color: AppColors.background.opacity(0.8), location: 0.3),
+                            .init(color: AppColors.background, location: 1)
+                        ]),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: 100)
+                )
+            }
+            .ignoresSafeArea(.container, edges: .bottom)
+        }
+        
+    }
+
+    private func requestStopRecording() {
+        if isRecording {
+            showStopConfirmation = true
+        } else {
+            // カウントダウン中のキャンセルは記録が無いので確認不要
+            stopRecording()
+        }
+    }
+
     private func stopRecording() {
         isRecording = false
         isWaitingForStart = false

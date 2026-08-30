@@ -397,7 +397,10 @@ struct GlassListRow: View {
                 }
             }
         }
-        .allowsHitTesting(isEditing)
+        // 編集モード以外ではこのビュー自身はタップを扱わず、
+        // 親のNavigationLinkに委ねる。
+        // 以前は .allowsHitTesting(isEditing) でビュー全体を無効化していたため、
+        // 通常時にリンクが反応せず画面遷移できなかった。
     }
 }
 

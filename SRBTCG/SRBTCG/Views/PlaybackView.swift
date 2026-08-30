@@ -16,6 +16,8 @@ struct PlaybackView: View {
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var appStrings: AppStrings
     @State private var isPlaying = true
+    /// 再生停止の確認
+    @State private var showStopConfirmation = false
     @State private var progressWave = 0
     @State private var progressSecond = 0
     @State private var countdownRemaining: Double = 14.5
@@ -157,7 +159,7 @@ struct PlaybackView: View {
                 Spacer()
                 
                 // 停止ボタン
-                Button(action: stopPlayback) {
+                Button(action: { showStopConfirmation = true }) {
                     HStack {
                         Image(systemName: "stop.fill")
                             .font(.title2)
@@ -181,6 +183,12 @@ struct PlaybackView: View {
             UIApplication.shared.isIdleTimerDisabled = false
             playbackTimer?.invalidate()
             ttsManager.stop()
+        }
+        .alert("再生を終了しますか？", isPresented: $showStopConfirmation) {
+            Button("続ける", role: .cancel) { }
+            Button("終了する", role: .destructive) { stopPlayback() }
+        } message: {
+            Text("再生を終了して一覧に戻ります。")
         }
     }
     
