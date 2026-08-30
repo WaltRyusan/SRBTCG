@@ -501,7 +501,7 @@ struct WaveListView: View {
         progressSecond = 0
         clock.reset()
 
-        announce(appStrings.waveStart(progressWave))
+        announce(appStrings.waveRecordingStart(progressWave))
 
         do {
             try sttManager.startRecording()
@@ -565,7 +565,7 @@ struct WaveListView: View {
         // 掴んだままだと次のWaveでオーディオエンジンを二重に初期化することになる。
         sttManager.stopRecording()
 
-        announce(appStrings.waveEnd(progressWave))
+        announce(appStrings.waveEndNext(progressWave, progressWave + 1))
 
         clock.reset()
         countdownRemaining = Int(ceil(WaveTiming.interval))

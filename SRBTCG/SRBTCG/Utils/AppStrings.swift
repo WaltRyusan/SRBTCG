@@ -132,6 +132,16 @@ class AppStrings: ObservableObject {
     func waveEnd(_ wave: Int) -> String {
         get("waveEnd").replacingOccurrences(of: "{wave}", with: "\(wave)")
     }
+    /// 録音でカウントダウンが終わったときの読み上げ
+    func waveRecordingStart(_ wave: Int) -> String {
+        get("waveRecordingStart").replacingOccurrences(of: "{wave}", with: "\(wave)")
+    }
+    /// Waveが終わってインターバルに入るときの読み上げ
+    func waveEndNext(_ wave: Int, _ next: Int) -> String {
+        get("waveEndNext")
+            .replacingOccurrences(of: "{wave}", with: "\(wave)")
+            .replacingOccurrences(of: "{next}", with: "\(next)")
+    }
     var recordingCompleted: String { return get("recordingCompleted") }
     var sttUnavailable: String { return get("sttUnavailable") }
     func secondLabel(_ sec: Int) -> String {
@@ -257,6 +267,8 @@ class AppStrings: ObservableObject {
             "startingRecording": "録音をスタートします",
             "waveStart": "Wave {wave} 開始",
             "waveEnd": "Wave {wave} 終了",
+            "waveRecordingStart": "Wave {wave} の録音を開始します",
+            "waveEndNext": "Wave {wave} 終了です。次は Wave {next}",
             "recordingCompleted": "録音が完了しました",
             "sttUnavailable": "音声認識を利用できません。マイクの権限を確認してください。",
             "secondLabel": "{sec} 秒",
@@ -331,6 +343,8 @@ class AppStrings: ObservableObject {
             "startingRecording": "Starting recording",
             "waveStart": "Wave {wave} Start",
             "waveEnd": "Wave {wave} End",
+            "waveRecordingStart": "Starting recording for Wave {wave}",
+            "waveEndNext": "Wave {wave} finished. Next is Wave {next}",
             "recordingCompleted": "Recording completed",
             "sttUnavailable": "Speech recognition unavailable. Check microphone permissions.",
             "secondLabel": "{sec} sec",
@@ -405,6 +419,8 @@ class AppStrings: ObservableObject {
             "startingRecording": "녹음 시작",
             "waveStart": "웨이브 {wave} 시작",
             "waveEnd": "웨이브 {wave} 종료",
+            "waveRecordingStart": "웨이브 {wave} 녹음을 시작합니다",
+            "waveEndNext": "웨이브 {wave} 종료입니다. 다음은 웨이브 {next}",
             "recordingCompleted": "녹음 완료",
             "sttUnavailable": "음성 인식을 사용할 수 없습니다. 마이크 권한을 확인하세요.",
             "secondLabel": "{sec}초",
@@ -479,6 +495,8 @@ class AppStrings: ObservableObject {
             "startingRecording": "开始录音",
             "waveStart": "第{wave}波开始",
             "waveEnd": "第{wave}波结束",
+            "waveRecordingStart": "开始录制第{wave}波",
+            "waveEndNext": "第{wave}波结束。接下来是第{next}波",
             "recordingCompleted": "录音完成",
             "sttUnavailable": "语音识别不可用。请检查麦克风权限。",
             "secondLabel": "{sec}秒",
