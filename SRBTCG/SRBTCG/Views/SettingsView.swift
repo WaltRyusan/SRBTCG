@@ -378,10 +378,15 @@ struct AboutView: View {
                         Divider()
                         
                         // リンク
-                        Link("プライバシーポリシー", destination: URL(string: "https://example.com/privacy")!)
+                        // サポートとポリシーは4アプリ分を app-support リポジトリで公開している
+                        // https://github.com/WaltRyusan/app-support
+                        Link("サポート", destination: URL(string: SupportLinks.support)!)
                             .foregroundColor(AppColors.primary)
-                        
-                        Link("利用規約", destination: URL(string: "https://example.com/terms")!)
+
+                        Link("プライバシーポリシー", destination: URL(string: SupportLinks.privacyPolicy)!)
+                            .foregroundColor(AppColors.primary)
+
+                        Link("利用規約", destination: URL(string: SupportLinks.terms)!)
                             .foregroundColor(AppColors.primary)
                     }
                     .padding()
