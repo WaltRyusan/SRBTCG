@@ -22,25 +22,10 @@ struct SalmonRunGuideView: View {
     @StateObject private var ttsManager = TTSManager.shared
     @EnvironmentObject var appStrings: AppStrings
     
-    let hazardLevels = ["~199%", "200~299%", "300~332%", "MAX (333%)"]
-    let hazardTimings = [
-        // ~199%のタイミング (100秒からカウントダウン) - 最終湧き10秒
-        [(85, "spawnDirectionChange1"), (70, "spawnDirectionChange2"), (55, "spawnDirectionChange3"), 
-         (40, "spawnDirectionChange4"), (30, "thirtySecondsLeft"), (25, "spawnDirectionChange5"), 
-         (10, "finalSpawn"), (0, "waveClear")],
-        // 200~299%のタイミング - 最終湧き15秒
-        [(85, "spawnDirectionChange1"), (70, "spawnDirectionChange2"), (55, "spawnDirectionChange3"), 
-         (30, "thirtySecondsLeft"), (25, "spawnDirectionChange4"), (15, "finalSpawn"), 
-         (10, "spawnDirectionChange5"), (0, "waveClear")],
-        // 300~332%のタイミング - 最終湧き20秒
-        [(90, "spawnDirectionChange1"), (75, "spawnDirectionChange2"), (60, "spawnDirectionChange3"), 
-         (30, "thirtySecondsLeft"), (25, "spawnDirectionChange4"), (20, "finalSpawn"), 
-         (15, "spawnDirectionChange5"), (0, "waveClear")],
-        // MAX (333%)のタイミング - 最終湧き25秒
-        [(90, "spawnDirectionChange1"), (75, "spawnDirectionChange2"), (60, "spawnDirectionChange3"), 
-         (30, "thirtySecondsLeft"), (25, "finalSpawn"), (20, "spawnDirectionChange4"), 
-         (15, "spawnDirectionChange5"), (0, "waveClear")]
-    ]
+    /// いま選んでいるキケン度
+    private var hazard: HazardLevel {
+        HazardLevel(rawValue: selectedHazard) ?? .low
+    }
     
     var body: some View {
         NavigationStack {
@@ -52,18 +37,20 @@ struct SalmonRunGuideView: View {
                     .ignoresSafeArea()
                     .opacity(0.3)
                 
-                VStack(spacing: 20) {
+                VStack(spacing: 16) {
                     // キケン度選択
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 10) {
                         Text(appStrings.hazardLevel)
                             .font(.headline)
                             .foregroundColor(AppColors.textPrimary)
-                            .padding(.top, 20)
-                        
+                            // ナビゲーションバーの下に潜り込んで文字が欠けていたため、
+                            // バーの高さぶんの余白を確保する
+                            .padding(.top, 52)
+
                         Picker("", selection: $selectedHazard) {
-                            ForEach(0..<hazardLevels.count, id: \.self) { index in
-                                Text(hazardLevels[index])
-                                    .tag(index)
+                            ForEach(HazardLevel.allCases) { level in
+                                Text(level.label)
+                                    .tag(level.rawValue)
                             }
                         }
                         .pickerStyle(.segmented)
@@ -86,32 +73,35 @@ struct SalmonRunGuideView: View {
                                 .tint(AppColors.primary)
                         }
                         
-                        Text("※ 湧き方向変更は約15秒ごとにアナウンスされます")
+                        // 間隔はキケン度によって変わる（72 ÷ n 秒）
+                        Text("※ \(hazard.rangeText) では約\(hazard.spawnDirectionIntervalText)ごとにアナウンスされます")
                             .font(.caption2)
                             .foregroundColor(AppColors.textSecondary)
                     }
                     .padding(.horizontal, 20)
-                    .padding(.vertical, 10)
+                    .padding(.vertical, 8)
                     .background(AppColors.surface.opacity(0.5))
                     .cornerRadius(10)
                     .padding(.horizontal)
-                    
+
                     // 説明文
+                    // 広告バナーのぶん縦が狭くなるので、上下の間隔を詰めている
                     Text("※ 以下のタイミングで音声アナウンスが流れます")
                         .font(.caption)
                         .foregroundColor(AppColors.textSecondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
+                        .padding(.vertical, -4)
                     
                     // タイミング表示（高さを拡張してスクロールを最小限に）
                     VStack(alignment: .leading, spacing: 8) {
                         // タイミングリスト
-                        ForEach(hazardTimings[selectedHazard], id: \.0) { timing in
+                        ForEach(hazard.timings, id: \.second) { timing in
                             TimingRow(
-                                seconds: timing.0,
-                                messageKey: timing.1,
+                                seconds: timing.second,
+                                messageKey: timing.key,
                                 appStrings: appStrings,
-                                isDisabled: timing.1.starts(with: "spawnDirectionChange") && !announceSpawnDirectionChange
+                                isDisabled: timing.key.starts(with: "spawnDirectionChange") && !announceSpawnDirectionChange
                             )
                         }
                     }
@@ -221,12 +211,10 @@ struct SalmonRunGuideView: View {
     }
     
     private func checkAndAnnounce() {
-        let timings = hazardTimings[selectedHazard]
-        
-        for timing in timings {
-            if timing.0 == currentSecond {
+        for timing in hazard.timings {
+            if timing.second == currentSecond {
                 // アナウンスを実行
-                switch timing.1 {
+                switch timing.key {
                 case let key where key.starts(with: "spawnDirectionChange"):
                     // 湧き方向変更アナウンスが有効な場合のみ
                     if announceSpawnDirectionChange {
