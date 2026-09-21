@@ -173,7 +173,11 @@ struct MainView: View {
     
     var body: some View {
         NavigationStack(path: $navigationPath) {
-            mainContent
+            VStack(spacing: 0) {
+                mainContent
+                // 購入済み・お試し期間中は何も描かれない
+                AdBannerView()
+            }
             .navigationTitle(appStrings.bigRunContestHeader)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(AppColors.surface.opacity(0.9), for: .navigationBar)

@@ -222,7 +222,11 @@ struct WaveListView: View {
     }
 
     private var chrome: some View {
-        content
+        VStack(spacing: 0) {
+            content
+            // 購入済み・お試し期間中は何も描かれない
+            AdBannerView()
+        }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(AppColors.surface.opacity(0.9), for: .navigationBar)
