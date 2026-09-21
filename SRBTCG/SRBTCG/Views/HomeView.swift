@@ -24,6 +24,12 @@ struct HomeView: View {
                     Image(systemName: "fish.fill")
                 }
                 .tag(1)
+
+            TipsView()
+                .tabItem {
+                    Image(systemName: "lightbulb.fill")
+                }
+                .tag(2)
         }
         .tint(AppColors.primary) // アクティブ色をオレンジに設定
     }
