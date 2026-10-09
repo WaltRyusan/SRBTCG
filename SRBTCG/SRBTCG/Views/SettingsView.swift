@@ -377,6 +377,15 @@ struct AboutView: View {
                         
                         Divider()
                         
+                        // 気に入った人が友達に薦められるようにする。
+                        // 広告や課金より角が立たない形で広がる導線。
+                        ShareLink(item: SupportLinks.shareMessage) {
+                            Label("このアプリを紹介する", systemImage: "square.and.arrow.up")
+                                .foregroundColor(AppColors.primary)
+                        }
+
+                        Divider()
+
                         // リンク
                         // サポートとポリシーは4アプリ分を app-support リポジトリで公開している
                         // https://github.com/WaltRyusan/app-support
