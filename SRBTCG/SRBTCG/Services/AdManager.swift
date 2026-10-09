@@ -26,23 +26,19 @@ class AdManager: NSObject, ObservableObject {
     #if DEBUG
     private let bannerAdUnitID = "ca-app-pub-3940256099942544/2934735716"
     private let interstitialAdUnitID = "ca-app-pub-3940256099942544/4411468910"
-    private let rewardedAdUnitID = "ca-app-pub-3940256099942544/1712485313"
     #else
     // ⚠️ 提出前に AdMob 管理画面から取得した本番IDへ差し替える。
     //    Info.plist の GADApplicationIdentifier も併せて差し替えること。
     private let bannerAdUnitID = "ca-app-pub-XXXXX/XXXXX"
     private let interstitialAdUnitID = "ca-app-pub-XXXXX/XXXXX"
-    private let rewardedAdUnitID = "ca-app-pub-XXXXX/XXXXX"
     #endif
     
     // 状態管理
     @Published var isBannerLoaded = false
-    @Published var rewardedPending = false
     
     // SharedPreferencesキー
     private let usageCountKey = "adManager_usageCount"
     private let reviewShownKey = "adManager_reviewShown"
-    private let rewardPendingKey = "adManager_rewardPending"
     
     // お試し回数
     private let trialCount = 3
@@ -71,9 +67,6 @@ class AdManager: NSObject, ObservableObject {
     func initialize() {
         guard !isInitialized else { return }
         isInitialized = true
-
-        // リワード未視聴状態をロード
-        rewardedPending = UserDefaults.standard.bool(forKey: rewardPendingKey)
 
         requestTrackingThenStartSDK()
     }
@@ -207,35 +200,22 @@ class AdManager: NSObject, ObservableObject {
         interstitialAd = nil  // 使い切ったので次を読み込む（delegateで再取得）
     }
     
-    // MARK: - Rewarded Ad (Stub)
-    
-    /// リワード広告を表示（スタブ）
-    func showRewardedAd() async -> Bool {
-        guard await shouldShowAds() else {
-            return true // 課金済みなら常に成功扱い
-        }
-        
-        // TODO: 実際のリワード広告を表示
-        print("Rewarded ad would be shown here")
-        
-        // スタブ実装：常に成功を返す
-        rewardedPending = false
-        UserDefaults.standard.set(false, forKey: rewardPendingKey)
-        return true
-    }
-    
-    /// リワード未視聴状態を設定
-    func setRewardedPending(_ pending: Bool) {
-        rewardedPending = pending
-        UserDefaults.standard.set(pending, forKey: rewardPendingKey)
-    }
-    
+    // リワード広告は実装しない。
+    //
+    // 以前は「録音を使うにはリワード広告を見る」という設計のコードがあったが、
+    // AdMob はリワード広告をオプトイン（報酬と引き換えに見るかを選ばせる）で
+    // 出すことを求めており、機能を使う条件にするのはポリシーに反する。
+    // https://developers.google.com/admob/ios/rewarded
+    //
+    // 録音は使う人が限られるコア機能で、ここを制限すると
+    // 熱心なユーザーほど離れてしまう。収益はバナーと起動時の全画面広告で取る。
+
     // MARK: - Event Handlers
-    
+
     /// バチコン再生完了時
     func onBigRunPlaybackCompleted() async {
         let count = incrementUsageCount()
-        
+
         // 3回目完了時はレビュー促進
         if count == trialCount {
             await showReviewPrompt()
@@ -245,22 +225,13 @@ class AdManager: NSObject, ObservableObject {
             await showInterstitialAd()
         }
     }
-    
-    /// バチコン録音完了時
-    func onBigRunRecordingCompleted() async {
-        guard !isTrialPeriod() else { return }
-        
-        // リワード広告を表示して視聴必須に
-        setRewardedPending(true)
-        _ = await showRewardedAd()
-    }
-    
+
     /// サーモンランガイド使用時
     func onSalmonRunGuideUsed() async {
         guard !isTrialPeriod() else { return }
         await showInterstitialAd()
     }
-    
+
     // MARK: - Review Prompt
     
     /// レビュー促進を表示
