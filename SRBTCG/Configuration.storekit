@@ -1,0 +1,67 @@
+{
+  "identifier" : "9D5F2A7B",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "160",
+      "familyShareable" : false,
+      "internalID" : "S1A2B3C4",
+      "localizations" : [
+        {
+          "description" : "記録したWaveの指示をファイルに書き出せるようになります。買い切りです。",
+          "displayName" : "記録の書き出し",
+          "locale" : "ja_JP"
+        }
+      ],
+      "productID" : "stt_export",
+      "referenceName" : "記録の書き出し",
+      "type" : "NonConsumable"
+    },
+    {
+      "displayPrice" : "320",
+      "familyShareable" : false,
+      "internalID" : "S2A2B3C4",
+      "localizations" : [
+        {
+          "description" : "バナー広告と全画面広告をすべて非表示にします。買い切りです。",
+          "displayName" : "広告除去",
+          "locale" : "ja_JP"
+        }
+      ],
+      "productID" : "ad_free",
+      "referenceName" : "広告除去",
+      "type" : "NonConsumable"
+    },
+    {
+      "displayPrice" : "400",
+      "familyShareable" : false,
+      "internalID" : "S3A2B3C4",
+      "localizations" : [
+        {
+          "description" : "記録の書き出しと広告除去をまとめたセットです。買い切りです。",
+          "displayName" : "まとめてお得セット",
+          "locale" : "ja_JP"
+        }
+      ],
+      "productID" : "premium_bundle",
+      "referenceName" : "まとめてお得セット",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_locale" : "ja_JP",
+    "_storefront" : "JPN",
+    "_storeKitErrors" : [
+
+    ]
+  },
+  "subscriptionGroups" : [
+
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}
