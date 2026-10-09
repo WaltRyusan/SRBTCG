@@ -1,67 +1,62 @@
 {
-  "identifier" : "9D5F2A7B",
-  "nonRenewingSubscriptions" : [
-
-  ],
-  "products" : [
+  "_doc": "課金をローカルで試すための設定。使うには Scheme → Run → Options → StoreKit Configuration でこのファイルを選ぶ。⚠️ 価格は PurchaseManager のコメントから写した暫定値。実在する価格ポイントは App Store Connect の一覧でしか確認できないため、アプリ登録後に確定させる。",
+  "identifier": "9D5F2A7B",
+  "nonRenewingSubscriptions": [],
+  "products": [
     {
-      "displayPrice" : "160",
-      "familyShareable" : false,
-      "internalID" : "S1A2B3C4",
-      "localizations" : [
+      "displayPrice": "160",
+      "familyShareable": false,
+      "internalID": "S1A2B3C4",
+      "localizations": [
         {
-          "description" : "記録したWaveの指示をファイルに書き出せるようになります。買い切りです。",
-          "displayName" : "記録の書き出し",
-          "locale" : "ja_JP"
+          "description": "記録したWaveの指示をファイルに書き出せるようになります。買い切りです。",
+          "displayName": "記録の書き出し",
+          "locale": "ja_JP"
         }
       ],
-      "productID" : "stt_export",
-      "referenceName" : "記録の書き出し",
-      "type" : "NonConsumable"
+      "productID": "stt_export",
+      "referenceName": "記録の書き出し",
+      "type": "NonConsumable"
     },
     {
-      "displayPrice" : "320",
-      "familyShareable" : false,
-      "internalID" : "S2A2B3C4",
-      "localizations" : [
+      "displayPrice": "320",
+      "familyShareable": false,
+      "internalID": "S2A2B3C4",
+      "localizations": [
         {
-          "description" : "バナー広告と全画面広告をすべて非表示にします。買い切りです。",
-          "displayName" : "広告除去",
-          "locale" : "ja_JP"
+          "description": "バナー広告と全画面広告をすべて非表示にします。買い切りです。",
+          "displayName": "広告除去",
+          "locale": "ja_JP"
         }
       ],
-      "productID" : "ad_free",
-      "referenceName" : "広告除去",
-      "type" : "NonConsumable"
+      "productID": "ad_free",
+      "referenceName": "広告除去",
+      "type": "NonConsumable"
     },
     {
-      "displayPrice" : "400",
-      "familyShareable" : false,
-      "internalID" : "S3A2B3C4",
-      "localizations" : [
+      "displayPrice": "400",
+      "familyShareable": false,
+      "internalID": "S3A2B3C4",
+      "localizations": [
         {
-          "description" : "記録の書き出しと広告除去をまとめたセットです。買い切りです。",
-          "displayName" : "まとめてお得セット",
-          "locale" : "ja_JP"
+          "description": "記録の書き出しと広告除去をまとめたセットです。買い切りです。",
+          "displayName": "まとめてお得セット",
+          "locale": "ja_JP"
         }
       ],
-      "productID" : "premium_bundle",
-      "referenceName" : "まとめてお得セット",
-      "type" : "NonConsumable"
+      "productID": "premium_bundle",
+      "referenceName": "まとめてお得セット",
+      "type": "NonConsumable"
     }
   ],
-  "settings" : {
-    "_locale" : "ja_JP",
-    "_storefront" : "JPN",
-    "_storeKitErrors" : [
-
-    ]
+  "settings": {
+    "_locale": "ja_JP",
+    "_storefront": "JPN",
+    "_storeKitErrors": []
   },
-  "subscriptionGroups" : [
-
-  ],
-  "version" : {
-    "major" : 3,
-    "minor" : 0
+  "subscriptionGroups": [],
+  "version": {
+    "major": 3,
+    "minor": 0
   }
 }
