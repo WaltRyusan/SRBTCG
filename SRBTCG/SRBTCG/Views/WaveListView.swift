@@ -64,16 +64,13 @@ struct WaveListView: View {
     @ViewBuilder
     private var content: some View {
         ZStack {
-            AppColors.background
-                .ignoresSafeArea()
+            // 他の画面と同じ背景にする。
+            // ここだけ単色だったため、行き来すると別アプリのように見えていた。
+            AnimatedGradientBackground()
 
-            // ステータスバーの背景色
-            VStack {
-                AppColors.surface
-                    .frame(height: 0)
-                    .ignoresSafeArea()
-                Spacer()
-            }
+            LiquidShapeView()
+                .ignoresSafeArea()
+                .opacity(0.3)
 
             waveSections
             floatingButtons
@@ -272,7 +269,7 @@ struct WaveListView: View {
             // 停止ボタンを押したときだけ閉じられるfullScreenCoverにしている。
             .fullScreenCover(isPresented: $showPlaybackView) {
                 PlaybackView(
-                    waveTexts: waveTexts,
+                    mode: .recorded(waveTexts: waveTexts),
                     startWave: playbackStartWave,
                     isPresented: $showPlaybackView
                 )
@@ -653,7 +650,10 @@ struct WaveListView: View {
                 // ヘッダーを上部に固定する。
                 // 展開したWaveをスクロールしても見出しが残るので、
                 // 途中の位置からでも閉じられる。
-                LazyVStack(spacing: 12, pinnedViews: [.sectionHeaders]) {
+                // spacing は 0。
+                // ヘッダーと中身はひと続きなので、間を空けると分断して見える。
+                // Section どうしの間隔は中身側で付ける。
+                LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
                     Spacer()
                         .frame(height: 20)
 
@@ -671,6 +671,8 @@ struct WaveListView: View {
                                 onWavePlayback: isRecording ? nil : { startWavePlayback(from: $0) }
                             )
                             .id(wave)
+                            // 直前のWaveとの区切り。Wave1は上の余白があるので付けない
+                            .padding(.top, wave == 1 ? 0 : 12)
                         }
                     }
 
@@ -693,73 +695,33 @@ struct WaveListView: View {
                 HStack {
                     Spacer()
                     
-                    // 再生ボタン
-                    Button(action: startPlayback) {
-                        HStack(spacing: 10) {
-                            Image(systemName: "play.circle.fill")
-                                .font(.system(size: 28))
-                            Text("再生")
-                                .font(.system(size: 18, weight: .semibold))
-                        }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 24)
-                        .padding(.vertical, 16)
-                        .background(
-                            LinearGradient(
-                                gradient: Gradient(colors: [AppColors.primary, AppColors.primary.opacity(0.8)]),
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .cornerRadius(25)
-                        .shadow(color: AppColors.primary.opacity(0.3), radius: 8, x: 0, y: 4)
-                    }
+                    // 一覧の追加ボタンと同じ球体ボタンで揃える。
+                    // アイコンだけで用が足りるので文字は置かない。
+                    SphericalButton(
+                        icon: "play.fill",
+                        color: AppColors.primary,
+                        action: startPlayback
+                    )
                     .disabled(isRecording)
-                    
+                    .opacity(isRecording ? 0.4 : 1)
+
                     Spacer()
-                        .frame(width: 16)
-                    
-                    // 録音ボタン
-                    Button(action: startRecording) {
-                        HStack(spacing: 10) {
-                            Image(systemName: "mic.circle.fill")
-                                .font(.system(size: 28))
-                            Text(isWaitingForStart ? "着地時にタップ" : "録音")
-                                .font(.system(size: 18, weight: .semibold))
-                        }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 24)
-                        .padding(.vertical, 16)
-                        .background(
-                            LinearGradient(
-                                gradient: Gradient(colors: [AppColors.danger, AppColors.danger.opacity(0.8)]),
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .cornerRadius(25)
-                        .shadow(color: AppColors.danger.opacity(0.3), radius: 8, x: 0, y: 4)
-                    }
-                    // 許可は押したあとの prepareRecording() で取るため、
-                    // ここで isAuthorized を見て無効化すると初回に一生押せない
+                        .frame(width: 32)
+
+                    SphericalButton(
+                        icon: "mic.fill",
+                        color: AppColors.danger,
+                        // 許可は押したあとの prepareRecording() で取るため、
+                        // ここで isAuthorized を見て無効化すると初回に一生押せない
+                        action: startRecording
+                    )
                     .disabled(isPlaying)
-                    
+                    .opacity(isPlaying ? 0.4 : 1)
+
                     Spacer()
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 30)
-                .background(
-                    LinearGradient(
-                        gradient: Gradient(stops: [
-                            .init(color: Color.clear, location: 0),
-                            .init(color: AppColors.background.opacity(0.8), location: 0.3),
-                            .init(color: AppColors.background, location: 1)
-                        ]),
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .frame(height: 100)
-                )
             }
             .ignoresSafeArea(.container, edges: .bottom)
         }
@@ -1063,7 +1025,7 @@ struct WaveIntervalList: View {
         // VStackだと展開した瞬間に50個まとめて生成され、
         // 開くたびに一瞬固まっていた。
         // LazyVStackにすると画面に入る分だけ作られる。
-        LazyVStack(spacing: 10) {
+        LazyVStack(spacing: 5) {
             ForEach(0..<WaveTiming.slotsPerWave, id: \.self) { intervalIndex in
                 WaveIntervalRow(
                     wave: wave,
@@ -1095,10 +1057,11 @@ struct WaveIntervalRow: View {
         HStack(spacing: 8) {
             // 時間ラベル（緑がかった白）
             Text(timeLabel)
-                .font(.system(size: 14, design: .monospaced))
+                .font(.system(size: 16, design: .monospaced))
                 .foregroundColor(Color(red: 0.9, green: 1.0, blue: 0.9))
-                .frame(width: 50, alignment: .trailing)
-            
+                // 16ptにすると「100秒」が50ptに収まらない
+                .frame(width: 58, alignment: .trailing)
+
             // テキストフィールド（クリアボタン内蔵）
             ZStack(alignment: .trailing) {
                 TextField("", text: Binding(
@@ -1106,8 +1069,9 @@ struct WaveIntervalRow: View {
                     set: { waveTexts[textIndex] = $0 }
                 ))
                 .textFieldStyle(RoundedBorderTextFieldStyle())
-                .font(.system(size: 14))
-                .frame(height: 36)
+                .font(.system(size: 17))
+                // 文字を大きくしたぶん、入力欄の高さも上げる
+                .frame(height: 42)
                 
                 // テキストフィールド内のクリアボタン
                 if let text = waveTexts[textIndex], !text.isEmpty {
@@ -1190,15 +1154,14 @@ struct RecordingOverlay: View {
                         .frame(width: 250)
                 }
                 
-                // 停止ボタン
-                Button(action: onStop) {
-                    Text(isWaitingForStart ? appStrings.cancel : appStrings.stopRecording)
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .padding()
-                        .background(AppColors.danger)
-                        .cornerRadius(12)
-                }
+                // 停止ボタン。他の画面のボタンと同じ球体で揃える。
+                // 着地待ちのあいだは中止、録音中は停止だが、
+                // どちらも「いま進んでいるものを止める」ことに変わりはない
+                SphericalButton(
+                    icon: isWaitingForStart ? "xmark" : "stop.fill",
+                    color: AppColors.danger,
+                    action: onStop
+                )
             }
         }
     }

@@ -33,40 +33,6 @@ struct SettingsView: View {
                     .ignoresSafeArea()
                 
                 List {
-                    // 言語設定
-                    Section {
-                        Button(action: { showLanguageSelect = true }) {
-                            HStack {
-                                Label(appStrings.languageSetting, systemImage: "globe")
-                                    .foregroundColor(AppColors.textPrimary)
-                                Spacer()
-                                Text(appStrings.currentLanguage.displayName)
-                                    .foregroundColor(AppColors.textSecondary)
-                                Image(systemName: "chevron.right")
-                                    .foregroundColor(AppColors.textSecondary)
-                                    .font(.system(size: 14))
-                            }
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-                    
-                    // データ管理
-                    // エクスポート/インポートはv2で提供予定のため非表示。
-                    // 実装（exportData / importData）は残してある。
-                    if Self.showsDataManagement {
-                        Section(header: Text(appStrings.dataManagement)) {
-                            Button(action: exportData) {
-                                Label(appStrings.exportData, systemImage: "square.and.arrow.up")
-                                    .foregroundColor(AppColors.textPrimary)
-                            }
-
-                            Button(action: importData) {
-                                Label(appStrings.importData, systemImage: "square.and.arrow.down")
-                                    .foregroundColor(AppColors.textPrimary)
-                            }
-                        }
-                    }
-                    
                     // 課金
                     Section(header: Text(appStrings.purchaseTitle)) {
                         Button(action: { showPurchaseView = true }) {
@@ -110,6 +76,40 @@ struct SettingsView: View {
                         .disabled(purchaseManager.isLoading)
                     }
                     
+                    // 言語設定
+                    Section {
+                        Button(action: { showLanguageSelect = true }) {
+                            HStack {
+                                Label(appStrings.languageSetting, systemImage: "globe")
+                                    .foregroundColor(AppColors.textPrimary)
+                                Spacer()
+                                Text(appStrings.currentLanguage.displayName)
+                                    .foregroundColor(AppColors.textSecondary)
+                                Image(systemName: "chevron.right")
+                                    .foregroundColor(AppColors.textSecondary)
+                                    .font(.system(size: 14))
+                            }
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                    
+                    // データ管理
+                    // エクスポート/インポートはv2で提供予定のため非表示。
+                    // 実装（exportData / importData）は残してある。
+                    if Self.showsDataManagement {
+                        Section(header: Text(appStrings.dataManagement)) {
+                            Button(action: exportData) {
+                                Label(appStrings.exportData, systemImage: "square.and.arrow.up")
+                                    .foregroundColor(AppColors.textPrimary)
+                            }
+
+                            Button(action: importData) {
+                                Label(appStrings.importData, systemImage: "square.and.arrow.down")
+                                    .foregroundColor(AppColors.textPrimary)
+                            }
+                        }
+                    }
+                    
                     // アプリについて
                     Section {
                         Button(action: { showAbout = true }) {
@@ -132,8 +132,12 @@ struct SettingsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("閉じる") {
+                    // 文字よりアイコンの方が、どの言語でも同じ幅で収まる
+                    Button {
                         dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .foregroundColor(AppColors.primary)
                     }
                 }
             }
@@ -274,8 +278,12 @@ struct PurchaseView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("閉じる") {
+                    // 文字よりアイコンの方が、どの言語でも同じ幅で収まる
+                    Button {
                         dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .foregroundColor(AppColors.primary)
                     }
                 }
             }
@@ -364,8 +372,10 @@ struct AboutView: View {
                             .fontWeight(.bold)
                             .foregroundColor(AppColors.textPrimary)
                         
-                        Text("Version 1.0.0")
-                            .font(.caption)
+                        // 番号を直接書くと、バージョンを上げたときに直し忘れる。
+                        // Info.plist の値をそのまま出す。
+                        Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")")
+                            .font(.system(size: 15))
                             .foregroundColor(AppColors.textSecondary)
                         
                         // 説明
@@ -405,8 +415,12 @@ struct AboutView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("閉じる") {
+                    // 文字よりアイコンの方が、どの言語でも同じ幅で収まる
+                    Button {
                         dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .foregroundColor(AppColors.primary)
                     }
                 }
             }

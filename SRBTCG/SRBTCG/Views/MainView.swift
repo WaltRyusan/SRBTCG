@@ -379,8 +379,9 @@ struct GlassListRow: View {
             }
             
             Text(title)
+                // 一覧で一番読む文字なので、標準より大きくする
+                .font(.system(size: 20, weight: .medium))
                 .foregroundColor(AppColors.textPrimary)
-                .fontWeight(.medium)
                 .frame(maxWidth: .infinity, alignment: .leading)
             
             if isEditing {

@@ -56,8 +56,8 @@ struct TipsView: View {
                 }
             }
             .padding(.horizontal)
-            // ナビゲーションバーの下に潜り込まないよう余白を取る
-            .padding(.top, 52)
+            // ナビゲーションバーにくっつかない程度に空ける
+            .padding(.top, 10)
         }
     }
 
@@ -71,12 +71,12 @@ struct TipsView: View {
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: category.icon)
-                    .font(.system(size: 15))
+                    .font(.system(size: 18))
                 Text(category.label)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 22, weight: .semibold))
             }
-            .padding(.horizontal, 18)
-            .frame(height: 44)
+            .padding(.horizontal, 20)
+            .frame(height: 52)
             .background(
                 isSelected ? AppColors.primary : AppColors.surface.opacity(0.6),
                 in: Capsule()
@@ -101,26 +101,31 @@ private struct TipCard: View {
                 }
             } label: {
                 HStack(alignment: .top, spacing: 10) {
+                    // 開いているカードのタイトルは色を変える。
+                    // 本文と同じ白のままだと、どれを開いているか分かりにくい。
                     Text(tip.title)
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(AppColors.textPrimary)
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(isExpanded ? AppColors.primary : AppColors.textPrimary)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
 
                     Spacer(minLength: 4)
 
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(AppColors.textSecondary)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(isExpanded ? AppColors.primary : AppColors.textSecondary)
                 }
             }
             .buttonStyle(.plain)
 
             if isExpanded {
                 // ** で囲んだ箇所を太字にする
+                // タイトルと同じ色にする。
+                // 薄いグレーだと本文が読みにくかった。
+                // タイトルとの区別は太さ（bold / regular）で付ける。
                 Text(attributedBody)
-                    .font(.system(size: 14))
-                    .foregroundColor(AppColors.textSecondary)
+                    .font(.system(size: 20))
+                    .foregroundColor(AppColors.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
 
                 if let url = tip.sourceURL {
