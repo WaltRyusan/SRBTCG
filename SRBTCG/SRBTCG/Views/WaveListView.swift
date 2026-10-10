@@ -215,7 +215,7 @@ struct WaveListView: View {
             }
         case .stopConfirm:
             Button("続ける", role: .cancel) { }
-            Button("中止する", role: .destructive) { stopRecording() }
+            Button("中止する", role: .destructive) { stopRecording(reason: .cancelled) }
         case .noText, .purchaseRequired, .permissionDenied, .recordingFailed, .importError:
             Button("OK", role: .cancel) { }
         }
@@ -267,11 +267,14 @@ struct WaveListView: View {
                     }
                 }
             }
-            .sheet(isPresented: $showPlaybackView) {
+            // sheetで出すと下に引っぱるだけで閉じられてしまう。
+            // 再生中にうっかり消すと最初からやり直しになるため、
+            // 停止ボタンを押したときだけ閉じられるfullScreenCoverにしている。
+            .fullScreenCover(isPresented: $showPlaybackView) {
                 PlaybackView(
-                    title: title,
                     waveTexts: waveTexts,
-                    startWave: playbackStartWave
+                    startWave: playbackStartWave,
+                    isPresented: $showPlaybackView
                 )
             }
 
@@ -542,7 +545,7 @@ struct WaveListView: View {
         } catch {
             // 無言で止まると原因が分からないので知らせる
             kDebugErrorPrint(error, message: "録音の開始に失敗")
-            stopRecording()
+            stopRecording(reason: .failed)
             dialog = .recordingFailed
             return
         }
@@ -594,7 +597,7 @@ struct WaveListView: View {
                 if progressWave < WaveTiming.waveCount {
                     startRecordingInterval()
                 } else {
-                    stopRecording()
+                    stopRecording(reason: .completed)
                 }
             }
         }
@@ -768,11 +771,33 @@ struct WaveListView: View {
             dialog = .stopConfirm
         } else {
             // カウントダウン中のキャンセルは記録が無いので確認不要
-            stopRecording()
+            stopRecording(reason: .cancelled)
         }
     }
 
-    private func stopRecording() {
+    /// 録音の止まり方
+    private enum RecordingStopReason {
+        /// Wave5まで録り終えた
+        case completed
+        /// 利用者が途中で止めた
+        case cancelled
+        /// 録音を開始できなかった
+        case failed
+    }
+
+    /// 録音を止める
+    ///
+    /// 読み上げは止まり方で変える。最後まで録れていないのに
+    /// 「完了しました」と言うと、全部記録できたと誤解させてしまう。
+    /// 開始に失敗したときはダイアログで理由を出すので、音声では何も言わない。
+    private func stopRecording(reason: RecordingStopReason) {
+        let announcement: String?
+        switch reason {
+        case .completed: announcement = appStrings.recordingCompleted
+        case .cancelled: announcement = appStrings.recordingCancelled
+        case .failed:    announcement = nil
+        }
+
         let wasRecording = isRecording || isInterval
         isRecording = false
         isInterval = false
@@ -786,9 +811,9 @@ struct WaveListView: View {
         // ここで waveTexts[progressWave] に代入していたが、
         // それは「Wave番号」ではなく「Wave1の1〜5番目の枠」を指すインデックスで、
         // 停止するたびにWave1の冒頭を認識結果全文で上書きしていた。
-        if wasRecording {
+        if wasRecording, let announcement {
             Task { @MainActor in
-                ttsManager.speak(appStrings.recordingCompleted)
+                ttsManager.speak(announcement)
             }
         }
 

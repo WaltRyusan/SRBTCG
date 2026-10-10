@@ -143,6 +143,8 @@ class AppStrings: ObservableObject {
             .replacingOccurrences(of: "{next}", with: "\(next)")
     }
     var recordingCompleted: String { return get("recordingCompleted") }
+    /// 途中で止めたときの読み上げ。最後まで録れていないので「完了」とは言わない
+    var recordingCancelled: String { return get("recordingCancelled") }
     var sttUnavailable: String { return get("sttUnavailable") }
     func secondLabel(_ sec: Int) -> String {
         get("secondLabel").replacingOccurrences(of: "{sec}", with: "\(sec)")
@@ -159,6 +161,11 @@ class AppStrings: ObservableObject {
     var recording: String { return get("recording") }
     func countdownLabel(_ sec: Int) -> String {
         get("countdownLabel").replacingOccurrences(of: "{sec}", with: "\(sec)")
+    }
+    /// 秒数を含まないWave表記。
+    /// 再生画面では秒数をプログレスリングの中央に出すので、こちらを使う
+    func waveLabel(_ wave: Int) -> String {
+        get("waveLabel").replacingOccurrences(of: "{wave}", with: "\(wave)")
     }
     func progressLabel(_ wave: Int, _ sec: Int) -> String {
         get("progressLabel")
@@ -270,6 +277,7 @@ class AppStrings: ObservableObject {
             "waveRecordingStart": "Wave {wave} の録音を開始します",
             "waveEndNext": "Wave {wave} 終了です。次は Wave {next}",
             "recordingCompleted": "録音が完了しました",
+            "recordingCancelled": "録音を中止しました",
             "sttUnavailable": "音声認識を利用できません。マイクの権限を確認してください。",
             "secondLabel": "{sec} 秒",
             "clearWave": "クリア",
@@ -278,6 +286,7 @@ class AppStrings: ObservableObject {
             "recording": "録音中",
             "countdownLabel": "開始まで {sec}秒",
             "progressLabel": "Wave {wave} - {sec}秒",
+            "waveLabel": "Wave {wave}",
             "intervalLabel": "インターバル {sec}秒",
             "deleteConfirmTitle": "削除確認",
             "deleteConfirmMessage": "選択した{count}件のリストを削除しますか？",
@@ -346,6 +355,7 @@ class AppStrings: ObservableObject {
             "waveRecordingStart": "Starting recording for Wave {wave}",
             "waveEndNext": "Wave {wave} finished. Next is Wave {next}",
             "recordingCompleted": "Recording completed",
+            "recordingCancelled": "Recording stopped",
             "sttUnavailable": "Speech recognition unavailable. Check microphone permissions.",
             "secondLabel": "{sec} sec",
             "clearWave": "Clear",
@@ -354,6 +364,7 @@ class AppStrings: ObservableObject {
             "recording": "Recording",
             "countdownLabel": "Starting in {sec}",
             "progressLabel": "Wave {wave} - {sec}s",
+            "waveLabel": "Wave {wave}",
             "intervalLabel": "Interval {sec}s",
             "deleteConfirmTitle": "Delete Confirmation",
             "deleteConfirmMessage": "Delete {count} selected list(s)?",
@@ -422,6 +433,7 @@ class AppStrings: ObservableObject {
             "waveRecordingStart": "웨이브 {wave} 녹음을 시작합니다",
             "waveEndNext": "웨이브 {wave} 종료입니다. 다음은 웨이브 {next}",
             "recordingCompleted": "녹음 완료",
+            "recordingCancelled": "녹음 중지",
             "sttUnavailable": "음성 인식을 사용할 수 없습니다. 마이크 권한을 확인하세요.",
             "secondLabel": "{sec}초",
             "clearWave": "지우기",
@@ -430,6 +442,7 @@ class AppStrings: ObservableObject {
             "recording": "녹음 중",
             "countdownLabel": "{sec}초 후 시작",
             "progressLabel": "웨이브 {wave} - {sec}초",
+            "waveLabel": "웨이브 {wave}",
             "intervalLabel": "휴식 {sec}초",
             "deleteConfirmTitle": "삭제 확인",
             "deleteConfirmMessage": "선택한 {count}개 목록을 삭제하시겠습니까?",
@@ -498,6 +511,7 @@ class AppStrings: ObservableObject {
             "waveRecordingStart": "开始录制第{wave}波",
             "waveEndNext": "第{wave}波结束。接下来是第{next}波",
             "recordingCompleted": "录音完成",
+            "recordingCancelled": "录音已停止",
             "sttUnavailable": "语音识别不可用。请检查麦克风权限。",
             "secondLabel": "{sec}秒",
             "clearWave": "清除",
@@ -506,6 +520,7 @@ class AppStrings: ObservableObject {
             "recording": "录音中",
             "countdownLabel": "{sec}秒后开始",
             "progressLabel": "第{wave}波 - {sec}秒",
+            "waveLabel": "第{wave}波",
             "intervalLabel": "间隔{sec}秒",
             "deleteConfirmTitle": "删除确认",
             "deleteConfirmMessage": "删除选中的{count}个列表？",

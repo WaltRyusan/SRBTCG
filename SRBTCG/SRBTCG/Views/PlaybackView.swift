@@ -9,15 +9,19 @@ import SwiftUI
 import AVFoundation
 
 struct PlaybackView: View {
-    let title: String
     let waveTexts: [Int: String]
     /// 再生を開始するWave（インターバルがズレたときの復帰用）
     var startWave: Int = 1
+    /// この画面を出しているかどうか（提示元が持つフラグ）
+    ///
+    /// 閉じるのに @Environment(\.dismiss) を使っていたが、
+    /// alertのボタンから呼ぶとalert自身の解除に食われてしまい、
+    /// fullScreenCoverが閉じないことがある。
+    /// 提示元のフラグを直接倒せば確実に閉じられる。
+    @Binding var isPresented: Bool
     let waveCount: Int = WaveTiming.waveCount
     /// 実時刻ベースの経過時間
     @State private var clock = ElapsedClock()
-    
-    @Environment(\.dismiss) var dismiss
     @EnvironmentObject var appStrings: AppStrings
     @State private var isPlaying = true
     /// 再生停止の確認
@@ -30,7 +34,6 @@ struct PlaybackView: View {
     @State private var isCountdown = true
     @State private var isInterval = false
     @State private var playbackTimer: Timer?
-    @State private var announcementLog: [String] = []
     @State private var currentAnnouncement = ""
     
     @StateObject private var ttsManager = TTSManager.shared
@@ -46,65 +49,47 @@ struct PlaybackView: View {
             .ignoresSafeArea()
             
             VStack(spacing: 40) {
-                // タイトル
-                Text(title)
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
+                // いま何Wave目か。
+                // プレイ中はリスト名より知りたい情報なので、一番見やすい最上部に置く。
+                // 開始前のカウントダウン中はまだWaveが始まっていないので、
+                // 空白で高さだけ確保して下のレイアウトを動かさない。
+                Text(isCountdown ? " " : appStrings.waveLabel(progressWave))
+                    .font(.system(size: 52, weight: .bold, design: .monospaced))
                     .foregroundColor(AppColors.textPrimary)
-                    .padding(.top, 60)
-                
+                    .padding(.top, 50)
+
                 Spacer()
                 
                 // メイン表示エリア
                 if isCountdown {
                     // カウントダウン表示
-                    VStack(spacing: 20) {
-                        Text(appStrings.countdownLabel(Int(ceil(countdownRemaining))))
-                            .font(.system(size: 60, weight: .bold, design: .rounded))
-                            .foregroundColor(AppColors.golden)
-                            .animation(.spring(), value: countdownRemaining)
-                        
-                        Text("準備してください")
-                            .font(.title2)
-                            .foregroundColor(AppColors.textSecondary)
-                    }
+                    // 「開始まで N秒」で待つことは伝わるので、添え書きは置かない
+                    Text(appStrings.countdownLabel(Int(ceil(countdownRemaining))))
+                        .font(.system(size: 60, weight: .bold, design: .rounded))
+                        .foregroundColor(AppColors.golden)
+                        .animation(.spring(), value: countdownRemaining)
                 } else if isInterval {
                     // インターバル表示
+                    // 何を待っているのかを先に読ませたいので、見出しを上に置く
                     VStack(spacing: 20) {
+                        Text("次のWaveまで")
+                            .font(.title2)
+                            .foregroundColor(AppColors.textSecondary)
+
                         Text(appStrings.intervalLabel(Int(ceil(countdownRemaining))))
                             .font(.system(size: 48, weight: .bold, design: .rounded))
                             .foregroundColor(AppColors.accent)
                             .animation(.spring(), value: countdownRemaining)
-                        
-                        Text("次のWaveまで")
-                            .font(.title2)
-                            .foregroundColor(AppColors.textSecondary)
                     }
                 } else {
                     // Wave進行中表示
-                    VStack(spacing: 20) {
-                        // 進行状況
-                        Text(appStrings.progressLabel(progressWave, progressSecond))
-                            .font(.system(size: 36, weight: .bold, design: .monospaced))
-                            .foregroundColor(AppColors.textPrimary)
-                        
-                        // 現在のアナウンス内容
-                        if !currentAnnouncement.isEmpty {
-                            Text(currentAnnouncement)
-                                .font(.title2)
-                                .fontWeight(.semibold)
-                                .foregroundColor(AppColors.golden)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal)
-                                .animation(.easeIn, value: currentAnnouncement)
-                        }
-                        
+                    VStack(spacing: 24) {
                         // プログレスリング
                         ZStack {
                             Circle()
-                                .stroke(AppColors.surface, lineWidth: 15)
-                                .frame(width: 180, height: 180)
-                            
+                                .stroke(AppColors.surface, lineWidth: 18)
+                                .frame(width: 230, height: 230)
+
                             Circle()
                                 .trim(from: 0, to: CGFloat(progressSecond) / 100.0)
                                 .stroke(
@@ -113,52 +98,37 @@ struct PlaybackView: View {
                                         startPoint: .topLeading,
                                         endPoint: .bottomTrailing
                                     ),
-                                    style: StrokeStyle(lineWidth: 15, lineCap: .round)
+                                    style: StrokeStyle(lineWidth: 18, lineCap: .round)
                                 )
-                                .frame(width: 180, height: 180)
+                                .frame(width: 230, height: 230)
                                 .rotationEffect(.degrees(-90))
                                 .animation(.linear(duration: 1), value: progressSecond)
-                            
-                            VStack {
+
+                            VStack(spacing: 2) {
                                 Text("\(progressSecond)")
-                                    .font(.system(size: 60, weight: .bold, design: .monospaced))
+                                    .font(.system(size: 78, weight: .bold, design: .monospaced))
                                     .foregroundColor(AppColors.textPrimary)
                                 Text("/ 100")
-                                    .font(.caption)
+                                    .font(.subheadline)
                                     .foregroundColor(AppColors.textSecondary)
                             }
                         }
-                        
-                        // 現在のテキスト表示
-                        if let currentText = getCurrentText() {
-                            Text(currentText)
-                                .font(.title3)
-                                .foregroundColor(AppColors.textPrimary)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal)
-                                .frame(maxHeight: 100)
-                        }
-                        
-                        // アナウンスログ（スクロール可能）
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 8) {
-                                ForEach(announcementLog.reversed(), id: \.self) { log in
-                                    HStack(alignment: .top, spacing: 8) {
-                                        Image(systemName: "speaker.wave.2.fill")
-                                            .font(.caption)
-                                            .foregroundColor(AppColors.primary)
-                                        Text(log)
-                                            .font(.caption)
-                                            .foregroundColor(AppColors.textSecondary)
-                                    }
-                                    .padding(.horizontal)
-                                }
-                            }
-                        }
-                        .frame(maxHeight: 150)
-                        .background(AppColors.surface.opacity(0.3))
-                        .cornerRadius(12)
-                        .padding(.horizontal)
+
+                        // いま読み上げている指示。
+                        // プレイ中にちらっと見て分かる必要があるので大きく出す。
+                        // 長いときは折り返し、それでも入らなければ縮めて枠に収める。
+                        // 過去の指示は遡って読むものではないため、履歴は持たない。
+                        Text(currentAnnouncement)
+                            .font(.system(size: 40, weight: .bold))
+                            .foregroundColor(AppColors.golden)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(4)
+                            .minimumScaleFactor(0.5)
+                            .padding(.horizontal)
+                            // 高さを固定して、文字数が変わっても
+                            // リングと停止ボタンの位置を動かさない
+                            .frame(height: 180)
+                            .animation(.easeIn, value: currentAnnouncement)
                     }
                 }
                 
@@ -273,7 +243,6 @@ struct PlaybackView: View {
         if announceStart {
             let waveStartMsg = appStrings.waveStart(progressWave)
             announce(waveStartMsg)
-            addToLog("Wave \(progressWave): \(waveStartMsg)")
         }
 
         var lastSpokenSlot = -1
@@ -291,7 +260,6 @@ struct PlaybackView: View {
                 if let text = waveTexts[textIndex], !text.isEmpty {
                     announce(text)
                     currentAnnouncement = text
-                    addToLog("[残り\(Int(WaveTiming.waveDuration) - progressSecond)秒] \(text)")
                 }
             }
 
@@ -310,14 +278,12 @@ struct PlaybackView: View {
     private func startInterval() {
         let waveEndMsg = appStrings.waveEnd(progressWave)
         announce(waveEndMsg)
-        addToLog("Wave \(progressWave) 終了: \(waveEndMsg)")
         currentAnnouncement = ""
 
         startCountdown(duration: WaveTiming.interval, isInterval: true) {
             progressWave += 1
             let nextWaveMsg = appStrings.waveStart(progressWave)
             announce(nextWaveMsg)
-            addToLog("Wave \(progressWave): \(nextWaveMsg)")
             // ここでアナウンス済みなので再度読み上げない
             startWavePlayback(announceStart: false)
         }
@@ -327,11 +293,10 @@ struct PlaybackView: View {
         playbackTimer?.invalidate()
         let completionMsg = appStrings.allClear
         announce(completionMsg)
-        addToLog("完了: \(completionMsg)")
         currentAnnouncement = completionMsg
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            dismiss()
+            isPresented = false
         }
     }
 
@@ -343,38 +308,20 @@ struct PlaybackView: View {
         playbackTimer?.invalidate()
         playbackTimer = nil
         ttsManager.stop()
-        dismiss()
+        isPresented = false
     }
     
-    private func getCurrentText() -> String? {
-        // 2秒ごとのインデックスで取得（100秒から2秒ごと）
-        let slot = progressSecond / Int(WaveTiming.textInterval)
-        let textIndex = (progressWave - 1) * WaveTiming.slotsPerWave + slot
-        return waveTexts[textIndex]
-    }
     
-    private func addToLog(_ message: String) {
-        let timestamp = Date()
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm:ss"
-        let timeString = formatter.string(from: timestamp)
-        announcementLog.append("[\(timeString)] \(message)")
-        
-        // ログが多すぎる場合は古いものを削除
-        if announcementLog.count > 50 {
-            announcementLog.removeFirst()
-        }
-    }
 }
 
 #Preview {
     PlaybackView(
-        title: "テストリスト",
         waveTexts: [
             10: "テスト1",
             30: "テスト2",
             50: "テスト3"
-        ]
+        ],
+        isPresented: .constant(true)
     )
     .environmentObject(AppStrings.shared)
 }
