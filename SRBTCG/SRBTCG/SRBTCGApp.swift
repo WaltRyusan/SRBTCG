@@ -57,12 +57,20 @@ struct SRBTCGApp: App {
                     .environmentObject(purchaseManager)
                     .environmentObject(adManager)
                     .persistentSystemOverlays(.hidden) // フルスクリーン対応
+                    // 独自の配色（AppColors）を使っているため、
+                    // システムがライトモードだと背景だけ明るくなり文字が読めなくなる。
+                    // 端末の設定にかかわらずダークで固定する。
+                    .preferredColorScheme(.dark)
             } else {
                 HomeView()
                     .environmentObject(appStrings)
                     .environmentObject(purchaseManager)
                     .environmentObject(adManager)
                     .persistentSystemOverlays(.hidden) // フルスクリーン対応
+                    // 独自の配色（AppColors）を使っているため、
+                    // システムがライトモードだと背景だけ明るくなり文字が読めなくなる。
+                    // 端末の設定にかかわらずダークで固定する。
+                    .preferredColorScheme(.dark)
                     .onAppear {
                         // 課金マネージャー初期化
                         Task {
