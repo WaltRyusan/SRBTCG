@@ -9,17 +9,11 @@ import SwiftUI
 
 struct SalmonRunGuideView: View {
     @State private var selectedHazard = 0
-    @State private var isPlaying = false
-    @State private var isWaitingForTap = false
-    @State private var playbackTimer: Timer?
-    @State private var currentSecond = 100
     @State private var showSettings = false
     @State private var showPlayConfirmation = false
-    @State private var isInWaitPeriod = false // Wave開始前の待機時間フラグ
-    @State private var waitTimeRemaining = 13 // 待機時間カウンタ
-    @State private var currentWaveNumber = 1 // 現在のWave番号
+    /// 再生画面を出しているか
+    @State private var showPlaybackView = false
     @AppStorage("announceSpawnDirectionChange") private var announceSpawnDirectionChange = true // 湧き方向変更アナウンス設定
-    @StateObject private var ttsManager = TTSManager.shared
     @EnvironmentObject var appStrings: AppStrings
     
     /// いま選んでいるキケン度
@@ -43,7 +37,7 @@ struct SalmonRunGuideView: View {
                     // キケン度選択
                     VStack(alignment: .leading, spacing: 10) {
                         Text(appStrings.hazardLevel)
-                            .font(.headline)
+                            .font(.system(size: 22, weight: .semibold))
                             .foregroundColor(AppColors.textPrimary)
                             // ナビゲーションバーに重ならない程度に空ける
                             .padding(.top, 8)
@@ -57,6 +51,17 @@ struct SalmonRunGuideView: View {
                         .pickerStyle(.segmented)
                         .background(AppColors.surface)
                         .cornerRadius(8)
+                        // SwiftUIのPickerは .font を受け付けないので、
+                        // UIKit側の見た目を指定する。
+                        // appearance はアプリ全体に効くが、
+                        // セグメントを使っているのはこの画面だけ。
+                        .onAppear {
+                            let font = UIFont.systemFont(ofSize: 16, weight: .semibold)
+                            UISegmentedControl.appearance()
+                                .setTitleTextAttributes([.font: font], for: .normal)
+                            UISegmentedControl.appearance()
+                                .setTitleTextAttributes([.font: font], for: .selected)
+                        }
                     }
                     .padding(.horizontal)
                     
@@ -64,7 +69,7 @@ struct SalmonRunGuideView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Text("湧き方向変更アナウンス")
-                                .font(.system(size: 14))
+                                .font(.system(size: 16))
                                 .foregroundColor(AppColors.textPrimary)
                             
                             Spacer()
@@ -76,7 +81,7 @@ struct SalmonRunGuideView: View {
                         
                         // 間隔はキケン度によって変わる（72 ÷ n 秒）
                         Text("※ \(hazard.rangeText) では約\(hazard.spawnDirectionIntervalText)ごとにアナウンスされます")
-                            .font(.caption2)
+                            .font(.footnote)
                             .foregroundColor(AppColors.textSecondary)
                     }
                     .padding(.horizontal, 20)
@@ -88,10 +93,13 @@ struct SalmonRunGuideView: View {
                     // 説明文とタイミング一覧はひと続きのものなので、
                     // 親のspacingを挟まずに近づける
                     VStack(spacing: 6) {
-                        Text("※ 以下のタイミングで音声アナウンスが流れます")
-                            .font(.caption)
-                            .foregroundColor(AppColors.textSecondary)
-                            .multilineTextAlignment(.center)
+                        // 「キケン度」と並ぶ見出しとして扱う。
+                        // 下の一覧を見れば流れるタイミングは分かるので、
+                        // 何の表かだけを示す短い見出しにしている
+                        Text("音声アナウンス内容")
+                            .font(.system(size: 22, weight: .semibold))
+                            .foregroundColor(AppColors.textPrimary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
 
                         // タイミング一覧だけをスクロールさせる。
                         // キケン度MAXでは項目が15個近くになり画面に収まらないが、
@@ -121,18 +129,12 @@ struct SalmonRunGuideView: View {
                     HStack {
                         Spacer()
 
+                        // 進行中の表示と停止は再生画面が受け持つので、
+                        // ここは開始のきっかけだけを出す
                         SphericalButton(
-                            icon: isPlaying ? "stop.fill" : "play.fill",
-                            color: isPlaying ? AppColors.danger : AppColors.primary,
-                            action: {
-                                if isPlaying {
-                                    // 停止（ダイアログなし）
-                                    stopPlayback()
-                                } else {
-                                    // 再生確認ダイアログを表示
-                                    showPlayConfirmation = true
-                                }
-                            }
+                            icon: "play.fill",
+                            color: AppColors.primary,
+                            action: { showPlayConfirmation = true }
                         )
                         
                         Spacer()
@@ -166,94 +168,26 @@ struct SalmonRunGuideView: View {
             .alert("再生開始タイミング", isPresented: $showPlayConfirmation) {
                 Button("キャンセル", role: .cancel) { }
                 Button("再生開始") {
-                    togglePlayback()
+                    showPlaybackView = true
                 }
             } message: {
                 Text("地面に着地したタイミングで再生を開始してください。")
             }
-        }
-    }
-    
-    private func togglePlayback() {
-        // ダイアログから呼ばれた時は直接再生開始
-        startActualPlayback()
-    }
-    
-    private func startActualPlayback() {
-        isWaitingForTap = false
-        isPlaying = true
-        isInWaitPeriod = true
-        waitTimeRemaining = 13
-        currentSecond = 100
-        
-        // タイマー開始（待機時間から）
-        playbackTimer?.invalidate()
-        playbackTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
-            if isInWaitPeriod {
-                // 待機時間中
-                waitTimeRemaining -= 1
-                if waitTimeRemaining <= 0 {
-                    // 待機時間終了、Wave開始
-                    isInWaitPeriod = false
-                    ttsManager.speak("Wave\(currentWaveNumber)開始")
-                }
-            } else {
-                // Wave進行中
-                currentSecond -= 1
-                
-                // 現在の秒数に対応するアナウンスをチェック
-                checkAndAnnounce()
-                
-                // 終了チェック（Wave繰り返し）
-                if currentSecond <= 0 {
-                    // Waveクリアアナウンス後、次のWaveへ
-                    currentWaveNumber += 1
-                    if currentWaveNumber > 5 {
-                        currentWaveNumber = 1 // Wave5の後はWave1に戻る
-                    }
-                    isInWaitPeriod = true
-                    waitTimeRemaining = 13
-                    currentSecond = 100
-                }
+            // バチコンと同じ再生画面を使う。
+            // 読み上げる中身が違うだけで、Wave進行の見せ方は共通。
+            .fullScreenCover(isPresented: $showPlaybackView) {
+                PlaybackView(
+                    mode: .guide(hazard: hazard),
+                    isPresented: $showPlaybackView
+                )
+                .environmentObject(appStrings)
             }
         }
     }
     
-    private func checkAndAnnounce() {
-        for timing in hazard.timings {
-            if timing.second == currentSecond {
-                // アナウンスを実行
-                switch timing.key {
-                case let key where key.starts(with: "spawnDirectionChange"):
-                    // 湧き方向変更アナウンスが有効な場合のみ
-                    if announceSpawnDirectionChange {
-                        ttsManager.speak(appStrings.spawnDirectionChange)
-                    }
-                case "thirtySecondsLeft":
-                    ttsManager.speak("納品数を意識")
-                case "finalSpawn":
-                    ttsManager.speak(appStrings.finalSpawn)
-                case "waveClear":
-                    ttsManager.speak("Wave\(currentWaveNumber)クリア")
-                default:
-                    break
-                }
-                break
-            }
-        }
-    }
     
-    private func stopPlayback() {
-        isPlaying = false
-        isWaitingForTap = false
-        isInWaitPeriod = false
-        waitTimeRemaining = 13
-        currentWaveNumber = 1
-        playbackTimer?.invalidate()
-        playbackTimer = nil
-        currentSecond = 100
-        ttsManager.stop()
-    }
+    
+    
 }
 
 struct TimingRow: View {
@@ -327,14 +261,14 @@ struct TimingRow: View {
             
             // タイムスタンプ（カウントダウン形式）
             Text(displayTime)
-                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                .font(.system(size: 20, weight: .bold, design: .monospaced))
                 .foregroundColor(isDisabled ? AppColors.golden.opacity(0.3) : AppColors.golden)
-                .frame(width: 80, alignment: .leading)
+                .frame(width: 102, alignment: .leading)
                 .strikethrough(isDisabled, color: AppColors.textSecondary)
             
             // メッセージ
             Text(message)
-                .font(.system(size: 15))
+                .font(.system(size: 20))
                 .foregroundColor(isDisabled ? AppColors.textPrimary.opacity(0.3) : AppColors.textPrimary)
                 .strikethrough(isDisabled, color: AppColors.textSecondary)
             

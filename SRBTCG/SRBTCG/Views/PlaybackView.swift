@@ -8,8 +8,31 @@
 import SwiftUI
 import AVFoundation
 
+/// 再生画面が何を読み上げるか
+///
+/// 画面の作り（Wave番号・残り秒数のリング・指示テキスト・停止ボタン）は
+/// どちらも同じで、違うのは読み上げる中身だけ。
+/// 別々の画面にすると、レイアウトの調整を二度やることになる。
+enum PlaybackMode {
+    /// 録音したテキストをなぞる（バチコン）
+    case recorded(waveTexts: [Int: String])
+    /// キケン度ごとの定型アナウンスを流す（通常・ビッグラン）
+    case guide(hazard: HazardLevel)
+
+    /// Wave5のあとに最初へ戻るか
+    ///
+    /// バチコンは記録した5Waveを1回なぞって終わる。
+    /// 通常モードは練習用なので、止めるまで繰り返す。
+    var loops: Bool {
+        switch self {
+        case .recorded: return false
+        case .guide: return true
+        }
+    }
+}
+
 struct PlaybackView: View {
-    let waveTexts: [Int: String]
+    let mode: PlaybackMode
     /// 再生を開始するWave（インターバルがズレたときの復帰用）
     var startWave: Int = 1
     /// この画面を出しているかどうか（提示元が持つフラグ）
@@ -35,6 +58,8 @@ struct PlaybackView: View {
     @State private var isInterval = false
     @State private var playbackTimer: Timer?
     @State private var currentAnnouncement = ""
+    /// 湧き方向変更を読み上げるか（通常モードの設定画面と同じ値を見る）
+    @AppStorage("announceSpawnDirectionChange") private var announceSpawnDirectionChange = true
     
     @StateObject private var ttsManager = TTSManager.shared
     
@@ -134,20 +159,12 @@ struct PlaybackView: View {
                 
                 Spacer()
                 
-                // 停止ボタン
-                Button(action: { showStopConfirmation = true }) {
-                    HStack {
-                        Image(systemName: "stop.fill")
-                            .font(.title2)
-                        Text(appStrings.stopPlayback)
-                            .font(.headline)
-                    }
-                    .foregroundColor(.white)
-                    .frame(width: 200, height: 60)
-                    .background(AppColors.danger)
-                    .cornerRadius(30)
-                    .shadow(radius: 5)
-                }
+                // 停止ボタン。他の画面のボタンと同じ球体で揃える
+                SphericalButton(
+                    icon: "stop.fill",
+                    color: AppColors.danger,
+                    action: { showStopConfirmation = true }
+                )
                 .padding(.bottom, 40)
             }
         }
@@ -245,21 +262,39 @@ struct PlaybackView: View {
             announce(waveStartMsg)
         }
 
+        // 同じものを二度読まないための記録。
+        // 録音の再生は2秒枠、ガイドは残り秒数で引くため、別々に持つ。
         var lastSpokenSlot = -1
+        var lastSpokenRemaining = Int(WaveTiming.waveDuration) + 1
 
         playbackTimer?.invalidate()
         playbackTimer = Timer.scheduledTimer(withTimeInterval: WaveTiming.tick, repeats: true) { timer in
             let elapsed = min(clock.elapsed, WaveTiming.waveDuration)
             progressSecond = Int(elapsed)
 
-            // 2秒ごとの枠に入ったら、その枠のテキストを一度だけ読み上げる
-            let slot = Int(elapsed / WaveTiming.textInterval)
-            if slot > lastSpokenSlot, slot < WaveTiming.slotsPerWave {
-                lastSpokenSlot = slot
-                let textIndex = (progressWave - 1) * WaveTiming.slotsPerWave + slot
-                if let text = waveTexts[textIndex], !text.isEmpty {
-                    announce(text)
-                    currentAnnouncement = text
+            switch mode {
+            case .recorded(let waveTexts):
+                // 2秒ごとの枠に入ったら、その枠のテキストを一度だけ読み上げる
+                let slot = Int(elapsed / WaveTiming.textInterval)
+                if slot > lastSpokenSlot, slot < WaveTiming.slotsPerWave {
+                    lastSpokenSlot = slot
+                    let textIndex = (progressWave - 1) * WaveTiming.slotsPerWave + slot
+                    if let text = waveTexts[textIndex], !text.isEmpty {
+                        announce(text)
+                        currentAnnouncement = text
+                    }
+                }
+
+            case .guide(let hazard):
+                // ガイドのタイミングは「残り何秒か」で決まっている
+                let remaining = Int(WaveTiming.waveDuration - elapsed)
+                if remaining < lastSpokenRemaining {
+                    lastSpokenRemaining = remaining
+                    if let timing = hazard.timings.first(where: { $0.second == remaining }),
+                       let text = guideAnnouncement(for: timing.key) {
+                        announce(text)
+                        currentAnnouncement = text
+                    }
                 }
             }
 
@@ -268,6 +303,9 @@ struct PlaybackView: View {
                 guard isPlaying else { return }
                 if progressWave < WaveTiming.waveCount {
                     startInterval()
+                } else if mode.loops {
+                    // 通常モードは止めるまで Wave1 から繰り返す
+                    startInterval(nextWave: 1)
                 } else {
                     completePlayback()
                 }
@@ -275,13 +313,33 @@ struct PlaybackView: View {
         }
     }
 
-    private func startInterval() {
+    /// ガイドのアナウンス文言。読み上げないものは nil
+    private func guideAnnouncement(for key: String) -> String? {
+        switch key {
+        case let key where key.starts(with: "spawnDirectionChange"):
+            // 設定で切っていれば鳴らさない
+            return announceSpawnDirectionChange ? appStrings.spawnDirectionChange : nil
+        case "thirtySecondsLeft":
+            return appStrings.thirtySecondsLeft
+        case "finalSpawn":
+            return appStrings.finalSpawn
+        case "waveClear":
+            // 残り0秒。この直後に startInterval が「Wave N 終了」を読むので、
+            // ここで鳴らすと二重になる
+            return nil
+        default:
+            return nil
+        }
+    }
+
+    /// - Parameter nextWave: インターバル明けに始めるWave。省略すると次の番号へ進む
+    private func startInterval(nextWave: Int? = nil) {
         let waveEndMsg = appStrings.waveEnd(progressWave)
         announce(waveEndMsg)
         currentAnnouncement = ""
 
         startCountdown(duration: WaveTiming.interval, isInterval: true) {
-            progressWave += 1
+            progressWave = nextWave ?? (progressWave + 1)
             let nextWaveMsg = appStrings.waveStart(progressWave)
             announce(nextWaveMsg)
             // ここでアナウンス済みなので再度読み上げない
@@ -316,11 +374,11 @@ struct PlaybackView: View {
 
 #Preview {
     PlaybackView(
-        waveTexts: [
+        mode: .recorded(waveTexts: [
             10: "テスト1",
             30: "テスト2",
             50: "テスト3"
-        ],
+        ]),
         isPresented: .constant(true)
     )
     .environmentObject(AppStrings.shared)
