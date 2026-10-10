@@ -15,13 +15,10 @@ struct SphericalButton: View {
     var body: some View {
         Button(action: action) {
             ZStack {
-                // 外側の影（深さを演出）
-                Circle()
-                    .fill(color.opacity(0.3))
-                    .frame(width: 64, height: 64)
-                    .blur(radius: 4)
-                    .offset(y: 4)
-                
+                // 以前はここに color.opacity(0.3) をぼかした円を敷いていたが、
+                // 下の .shadow と二重になり、ボタンの周りが黄色く四角に光って見えていた。
+                // 深さは .shadow だけで出す。
+
                 // メインの球体
                 Circle()
                     .fill(
@@ -59,7 +56,9 @@ struct SphericalButton: View {
                     .font(.system(size: 28, weight: .bold))
                     .foregroundColor(AppColors.background)
             }
-            .shadow(color: color.opacity(0.5), radius: 12, x: 0, y: 6)
+            // 色付きの影を広く落とすと背景に滲んで四角く見えるので、
+            // 黒い影を小さめに落として浮いている感じだけ出す
+            .shadow(color: .black.opacity(0.35), radius: 6, x: 0, y: 3)
         }
     }
 }

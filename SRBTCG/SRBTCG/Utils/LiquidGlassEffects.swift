@@ -73,6 +73,12 @@ struct LiquidShapeView: View {
             LiquidBlob(offset: offset3, color: AppColors.golden.opacity(0.3), scale: 1.0)
                 .rotationEffect(.degrees(rotation + 240))
         }
+        // ZStackの大きさはblobの200×200のままだと、
+        // 下の .drawingGroup がその範囲しかバッファを取らず、
+        // ぼかしの裾が縁で切り落とされて四角い塊に見えてしまう。
+        // （金イクラ色のblobのせいで黄色い四角として出ていた）
+        // 先に画面いっぱいまで広げてからぼかす。
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .blur(radius: 30)
         // ぼかしを毎フレーム、レイヤーツリー上で計算すると重い。
         // まとめて1枚のMetalレイヤーに描くことで、
@@ -227,7 +233,9 @@ struct FloatingActionButton: View {
                     .foregroundColor(.white)
             }
             .frame(width: 56, height: 56)
-            .shadow(color: AppColors.primary.opacity(0.4), radius: 20, x: 0, y: 10)
+            // 色付きの影を広く落とすと背景に滲んで四角く見えるため、
+            // 黒い影を小さめに落とす（SphericalButton と同じ理由）
+            .shadow(color: .black.opacity(0.35), radius: 8, x: 0, y: 4)
             .offset(y: isFloating ? -10 : 0)
         }
         .onAppear {
