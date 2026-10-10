@@ -38,7 +38,6 @@ struct TipsView: View {
 
                     // 購入済み・お試し期間中は何も描かれない
                     AdBannerView()
-                        .padding(.bottom, 60) // タブバーの分
                 }
             }
             .navigationTitle("TIPS")

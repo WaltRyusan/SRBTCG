@@ -64,14 +64,6 @@ struct WaveListView: View {
     @ViewBuilder
     private var content: some View {
         ZStack {
-            // 他の画面と同じ背景にする。
-            // ここだけ単色だったため、行き来すると別アプリのように見えていた。
-            AnimatedGradientBackground()
-
-            LiquidShapeView()
-                .ignoresSafeArea()
-                .opacity(0.3)
-
             waveSections
             floatingButtons
 
@@ -219,10 +211,21 @@ struct WaveListView: View {
     }
 
     private var chrome: some View {
-        VStack(spacing: 0) {
-            content
-            // 購入済み・お試し期間中は何も描かれない
-            AdBannerView()
+        ZStack {
+            // 他の画面と同じ背景にする。
+            // ここだけ単色だったため、行き来すると別アプリのように見えていた。
+            // VStack の外に置くのは、バナーの裏まで広げるため。
+            AnimatedGradientBackground()
+
+            LiquidShapeView()
+                .ignoresSafeArea()
+                .opacity(0.3)
+
+            VStack(spacing: 0) {
+                content
+                // 購入済み・お試し期間中は何も描かれない
+                AdBannerView()
+            }
         }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)

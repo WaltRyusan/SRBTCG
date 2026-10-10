@@ -143,7 +143,6 @@ struct SalmonRunGuideView: View {
 
                     // 購入済み・お試し期間中は何も描かれない
                     AdBannerView()
-                        .padding(.bottom, 80) // タブバーの分
                 }
             }
             .navigationTitle("ビッグラン/通常")

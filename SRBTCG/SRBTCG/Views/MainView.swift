@@ -25,19 +25,15 @@ struct MainView: View {
         return savedTitles.reversed() // 新しいものを上に表示
     }
     
+    /// 背景は body 側で敷く。
+    /// ここに持たせると VStack の中に閉じ込められ、
+    /// 下に置くバナーの裏まで届かず黒い帯になる。
+    @ViewBuilder
     var mainContent: some View {
-        ZStack {
-            AnimatedGradientBackground()
-            
-            LiquidShapeView()
-                .ignoresSafeArea()
-                .opacity(0.3)
-            
-            if savedTitles.isEmpty {
-                emptyStateView
-            } else {
-                listView
-            }
+        if savedTitles.isEmpty {
+            emptyStateView
+        } else {
+            listView
         }
     }
     
@@ -180,10 +176,19 @@ struct MainView: View {
     
     var body: some View {
         NavigationStack(path: $navigationPath) {
-            VStack(spacing: 0) {
-                mainContent
-                // 購入済み・お試し期間中は何も描かれない
-                AdBannerView()
+            ZStack {
+                // 背景はタブバーの裏まで広げる
+                AnimatedGradientBackground()
+
+                LiquidShapeView()
+                    .ignoresSafeArea()
+                    .opacity(0.3)
+
+                VStack(spacing: 0) {
+                    mainContent
+                    // 購入済み・お試し期間中は何も描かれない
+                    AdBannerView()
+                }
             }
             .navigationTitle(appStrings.bigRunContestHeader)
             .navigationBarTitleDisplayMode(.inline)

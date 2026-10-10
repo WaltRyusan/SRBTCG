@@ -24,17 +24,16 @@ class AdManager: NSObject, ObservableObject {
     // 自分の本番IDに開発中の端末からアクセスすると無効なトラフィックとみなされ、
     // AdMobアカウントが停止される恐れがあるため。
     #if DEBUG
-    private let bannerAdUnitID = "ca-app-pub-3940256099942544/2934735716"
+    fileprivate let bannerAdUnitID = "ca-app-pub-3940256099942544/2934735716"
     private let interstitialAdUnitID = "ca-app-pub-3940256099942544/4411468910"
     #else
     // ⚠️ 提出前に AdMob 管理画面から取得した本番IDへ差し替える。
     //    Info.plist の GADApplicationIdentifier も併せて差し替えること。
-    private let bannerAdUnitID = "ca-app-pub-XXXXX/XXXXX"
+    fileprivate let bannerAdUnitID = "ca-app-pub-XXXXX/XXXXX"
     private let interstitialAdUnitID = "ca-app-pub-XXXXX/XXXXX"
     #endif
     
     // 状態管理
-    @Published var isBannerLoaded = false
     
     // 起動回数とレビュー催促の管理は AppLaunchManager が持つ。
     // 以前はここで「バチコン再生の完了回数」を数えていたが、
@@ -52,7 +51,6 @@ class AdManager: NSObject, ObservableObject {
     /// ビューからは同期的に見られるようにしている。
     @Published private(set) var isAdFree = true
 
-    private var bannerView: BannerView?
     private var interstitialAd: InterstitialAd?
 
     private override init() {
@@ -104,33 +102,20 @@ class AdManager: NSObject, ObservableObject {
     @MainActor
     private func loadAdsIfAllowed() {
         guard !isAdFree else { return }
-        loadBanner()
+        // バナーは AdBannerView が置かれた画面ごとに読み込む
         loadInterstitial()
     }
 
     /// 購入が成立したときに呼ぶ。読み込み済みの広告を捨てる。
+    ///
+    /// バナーは isAdFree を見て各ビューが自分で消すので、ここでは触らない。
     @MainActor
     func discardLoadedAds() {
-        bannerView?.removeFromSuperview()
-        bannerView = nil
         interstitialAd = nil
         isAdFree = true
     }
 
     // MARK: - 読み込み
-
-    @MainActor
-    private func loadBanner() {
-        let banner = BannerView(adSize: AdSizeBanner)
-        banner.adUnitID = bannerAdUnitID
-
-        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let root = scene.windows.first?.rootViewController else { return }
-        banner.rootViewController = root
-
-        bannerView = banner
-        banner.load(Request())
-    }
 
     @MainActor
     private func loadInterstitial() {
@@ -156,12 +141,6 @@ class AdManager: NSObject, ObservableObject {
         return await !PurchaseManager.shared.hasAdFree()
     }
     
-    // MARK: - Banner Ad
-
-    /// 読み込み済みのバナー。SwiftUI側から包んで使う。
-    @MainActor
-    func currentBannerView() -> BannerView? { bannerView }
-
     // MARK: - Interstitial Ad
 
     /// 全画面広告を表示する
@@ -229,44 +208,78 @@ extension AdManager: FullScreenContentDelegate {
 
 /// 画面下部などに差し込むバナー。
 ///
-/// 購入済み・お試し期間中・未読み込みのときは何も描かないので、
-/// 置いておくだけでよい。
+/// 購入済み・お試し期間中は何も描かないので、置いておくだけでよい。
+///
+/// バナーは画面ごとに作る。
+/// 以前は AdManager が1つだけ持って全画面で使い回していたが、
+/// UIView は親を1つしか持てないため、タブを移ると前の画面から剥がれていた。
+/// さらに読み込み完了を知る手段が無く、`.task` が走る時点では
+/// まだ読み込めていないので、結局どの画面にも出ていなかった。
 struct AdBannerView: View {
     @StateObject private var adManager = AdManager.shared
-    @State private var banner: BannerView?
+    @State private var isLoaded = false
 
     var body: some View {
         Group {
-            if !adManager.isAdFree, banner != nil {
-                BannerContainer(banner: banner)
-                    .frame(height: 50)
+            if !adManager.isAdFree {
+                BannerRepresentable(adUnitID: adManager.bannerAdUnitID) {
+                    isLoaded = true
+                }
+                .frame(height: BannerRepresentable.adSize.size.height)
+                // 読み込めるまでは場所だけ取って中身を見せない。
+                // 空の枠が一瞬見えるより、そのまま出てくる方が自然。
+                .opacity(isLoaded ? 1 : 0)
             }
         }
         .task {
             await adManager.refreshAdFreeState()
-            // 読み込みは初期化時に始まっている。取れていれば受け取る。
-            banner = adManager.currentBannerView()
         }
     }
 }
 
-private struct BannerContainer: UIViewRepresentable {
-    let banner: BannerView?
+private struct BannerRepresentable: UIViewRepresentable {
+    let adUnitID: String
+    let onLoaded: () -> Void
 
-    func makeUIView(context: Context) -> UIView {
-        let container = UIView()
-        container.backgroundColor = .clear
-
-        if let banner {
-            banner.translatesAutoresizingMaskIntoConstraints = false
-            container.addSubview(banner)
-            NSLayoutConstraint.activate([
-                banner.centerXAnchor.constraint(equalTo: container.centerXAnchor),
-                banner.centerYAnchor.constraint(equalTo: container.centerYAnchor)
-            ])
-        }
-        return container
+    /// 画面幅に合わせたバナーの大きさ
+    ///
+    /// 固定の 320x50 だと画面幅に足りず、左右に下地の黒が出ていた。
+    /// アダプティブバナーなら端末の幅いっぱいに広がる。
+    static var adSize: AdSize {
+        currentOrientationAnchoredAdaptiveBanner(width: UIScreen.main.bounds.width)
     }
 
-    func updateUIView(_ uiView: UIView, context: Context) {}
+    func makeUIView(context: Context) -> BannerView {
+        let banner = BannerView(adSize: Self.adSize)
+        banner.adUnitID = adUnitID
+        banner.delegate = context.coordinator
+        banner.backgroundColor = .clear
+        banner.rootViewController = UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.keyWindow?.rootViewController }
+            .first
+        banner.load(Request())
+        return banner
+    }
+
+    func updateUIView(_ uiView: BannerView, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onLoaded: onLoaded)
+    }
+
+    final class Coordinator: NSObject, BannerViewDelegate {
+        private let onLoaded: () -> Void
+
+        init(onLoaded: @escaping () -> Void) {
+            self.onLoaded = onLoaded
+        }
+
+        func bannerViewDidReceiveAd(_ bannerView: BannerView) {
+            onLoaded()
+        }
+
+        func bannerView(_ bannerView: BannerView, didFailToReceiveAdWithError error: Error) {
+            kDebugErrorPrint(error, message: "バナーの読み込みに失敗")
+        }
+    }
 }
