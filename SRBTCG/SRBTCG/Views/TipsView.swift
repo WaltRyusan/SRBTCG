@@ -10,6 +10,7 @@ import SwiftUI
 struct TipsView: View {
     private let store = TipsStore.shared
     @State private var selectedCategory: TipCategory = .basic
+    @State private var showSettings = false
     @EnvironmentObject var appStrings: AppStrings
 
     var body: some View {
@@ -44,6 +45,15 @@ struct TipsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(AppColors.surface.opacity(0.9), for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar {
+                plainToolbarItem(placement: .navigationBarTrailing) {
+                    InfoToolbarButton { showSettings = true }
+                }
+            }
+            .sheet(isPresented: $showSettings) {
+                SettingsView()
+                    .environmentObject(appStrings)
+            }
         }
     }
 

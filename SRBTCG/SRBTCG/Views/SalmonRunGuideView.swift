@@ -150,14 +150,8 @@ struct SalmonRunGuideView: View {
             .toolbarBackground(AppColors.surface.opacity(0.9), for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        showSettings = true
-                    }) {
-                        Image(systemName: "gearshape")
-                            .foregroundColor(AppColors.primary)
-                    }
-                    .buttonStyle(.plain)
+                plainToolbarItem(placement: .navigationBarTrailing) {
+                    InfoToolbarButton { showSettings = true }
                 }
             }
             .sheet(isPresented: $showSettings) {

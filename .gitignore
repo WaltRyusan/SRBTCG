@@ -1,0 +1,8 @@
+.DS_Store
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# xcodeproj は project.yml から生成するので追跡しない
+*.xcodeproj

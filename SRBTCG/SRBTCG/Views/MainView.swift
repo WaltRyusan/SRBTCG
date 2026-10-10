@@ -165,11 +165,7 @@ struct MainView: View {
                     .buttonStyle(.plain)
                 }
             } else {
-                Button(action: { showSettings = true }) {
-                    Image(systemName: "gearshape")
-                        .foregroundColor(AppColors.primary)
-                }
-                .buttonStyle(.plain)
+                InfoToolbarButton { showSettings = true }
             }
         }
     }
@@ -195,10 +191,10 @@ struct MainView: View {
             .toolbarBackground(AppColors.surface.opacity(0.9), for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                plainToolbarItem(placement: .navigationBarLeading) {
                     leadingButton
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
+                plainToolbarItem(placement: .navigationBarTrailing) {
                     trailingButton
                 }
             }

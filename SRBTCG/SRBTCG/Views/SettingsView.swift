@@ -26,113 +26,193 @@ struct SettingsView: View {
     @State private var showAlert = false
     @State private var alertMessage = ""
     
+    /// アプリの表示名（Info.plistから取るのでコード側で二重管理しない）
+    private var appDisplayName: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
+            ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String
+            ?? "サモランガイド"
+    }
+
+    private var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "-"
+    }
+
+    /// 購入済みの項目にはチェックを出す
+    private func isPurchased(_ ids: [String]) -> Bool {
+        ids.contains { purchaseManager.purchasedProducts.contains($0) }
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
-                AppColors.background
+                // 他の画面と同じ背景にして、設定だけ浮かないようにする
+                AnimatedGradientBackground()
+
+                LiquidShapeView()
                     .ignoresSafeArea()
-                
+                    .opacity(0.3)
+
                 List {
-                    // 課金
-                    Section(header: Text(appStrings.purchaseTitle)) {
-                        Button(action: { showPurchaseView = true }) {
-                            HStack {
-                                Label("STT+Export", systemImage: "mic.badge.plus")
-                                    .foregroundColor(AppColors.textPrimary)
-                                Spacer()
-                                if purchaseManager.purchasedProducts.contains(PurchaseManager.productSttExport) ||
-                                   purchaseManager.purchasedProducts.contains(PurchaseManager.productPremiumBundle) {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundColor(AppColors.accent)
-                                }
-                            }
+                    // 購入
+                    Section {
+                        Button {
+                            showPurchaseView = true
+                        } label: {
+                            MenuRow(
+                                icon: "mic.badge.plus",
+                                title: "STT+Export",
+                                color: AppColors.primary,
+                                subtitle: "声で記録して書き出す",
+                                isChecked: isPurchased([
+                                    PurchaseManager.productSttExport,
+                                    PurchaseManager.productPremiumBundle
+                                ])
+                            )
                         }
-                        
-                        Button(action: { showPurchaseView = true }) {
-                            HStack {
-                                Label(appStrings.purchaseAdFree, systemImage: "xmark.square")
-                                    .foregroundColor(AppColors.textPrimary)
-                                Spacer()
-                                if purchaseManager.purchasedProducts.contains(PurchaseManager.productAdFree) ||
-                                   purchaseManager.purchasedProducts.contains(PurchaseManager.productPremiumBundle) {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundColor(AppColors.accent)
-                                }
-                            }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            showPurchaseView = true
+                        } label: {
+                            MenuRow(
+                                icon: "xmark.square.fill",
+                                title: appStrings.purchaseAdFree,
+                                color: AppColors.golden,
+                                subtitle: "バナーと全画面広告を消す",
+                                isChecked: isPurchased([
+                                    PurchaseManager.productAdFree,
+                                    PurchaseManager.productPremiumBundle
+                                ])
+                            )
                         }
-                        
+                        .buttonStyle(.plain)
+
                         Button(action: restorePurchases) {
-                            HStack {
-                                Label(appStrings.purchaseRestore, systemImage: "arrow.clockwise")
-                                    .foregroundColor(AppColors.primary)
-                                Spacer()
+                            MenuRow(
+                                icon: "arrow.clockwise",
+                                title: appStrings.purchaseRestore,
+                                color: AppColors.accent,
                                 // 復元はAppStoreとの通信を待つ。
                                 // 何も出ないと固まったように見えていた。
-                                if purchaseManager.isLoading {
-                                    ProgressView()
-                                }
-                            }
+                                isLoading: purchaseManager.isLoading
+                            )
                         }
+                        .buttonStyle(.plain)
                         .disabled(purchaseManager.isLoading)
                     }
-                    
-                    // 言語設定
+
+                    // 表示設定
                     Section {
-                        Button(action: { showLanguageSelect = true }) {
-                            HStack {
-                                Label(appStrings.languageSetting, systemImage: "globe")
-                                    .foregroundColor(AppColors.textPrimary)
-                                Spacer()
-                                Text(appStrings.currentLanguage.displayName)
-                                    .foregroundColor(AppColors.textSecondary)
-                                Image(systemName: "chevron.right")
-                                    .foregroundColor(AppColors.textSecondary)
-                                    .font(.system(size: 14))
-                            }
+                        Button {
+                            showLanguageSelect = true
+                        } label: {
+                            MenuRow(
+                                icon: "globe",
+                                title: appStrings.languageSetting,
+                                color: .teal,
+                                subtitle: appStrings.currentLanguage.displayName
+                            )
                         }
-                        .buttonStyle(PlainButtonStyle())
+                        .buttonStyle(.plain)
                     }
-                    
+
                     // データ管理
                     // エクスポート/インポートはv2で提供予定のため非表示。
                     // 実装（exportData / importData）は残してある。
                     if Self.showsDataManagement {
-                        Section(header: Text(appStrings.dataManagement)) {
+                        Section {
                             Button(action: exportData) {
-                                Label(appStrings.exportData, systemImage: "square.and.arrow.up")
-                                    .foregroundColor(AppColors.textPrimary)
+                                MenuRow(icon: "square.and.arrow.up", title: appStrings.exportData, color: .blue)
                             }
+                            .buttonStyle(.plain)
 
                             Button(action: importData) {
-                                Label(appStrings.importData, systemImage: "square.and.arrow.down")
-                                    .foregroundColor(AppColors.textPrimary)
+                                MenuRow(icon: "square.and.arrow.down", title: appStrings.importData, color: .blue)
                             }
+                            .buttonStyle(.plain)
                         }
                     }
-                    
-                    // アプリについて
+
+                    // 問い合わせ・紹介
                     Section {
-                        Button(action: { showAbout = true }) {
-                            HStack {
-                                Label(appStrings.aboutApp, systemImage: "info.circle")
-                                    .foregroundColor(AppColors.textPrimary)
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .foregroundColor(AppColors.textSecondary)
-                                    .font(.system(size: 14))
+                        // レビュー導線とは別に、いつでも意見を送れる入口を用意する
+                        Button {
+                            if let url = URL(string: SupportLinks.feedbackForm) {
+                                UIApplication.shared.open(url)
                             }
+                        } label: {
+                            MenuRow(
+                                icon: "bubble.left.and.text.bubble.right.fill",
+                                title: "ご意見・ご要望",
+                                color: .green,
+                                subtitle: "バグ報告・機能要望はこちら"
+                            )
                         }
-                        .buttonStyle(PlainButtonStyle())
+                        .buttonStyle(.plain)
+
+                        // 気に入った人が友達に薦められるようにする。
+                        // 広告や課金より角が立たない形で広がる導線。
+                        ShareLink(item: SupportLinks.shareMessage) {
+                            MenuRow(
+                                icon: "square.and.arrow.up.fill",
+                                title: "このアプリを紹介する",
+                                color: .orange,
+                                subtitle: "友達に教える"
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    // アプリ情報
+                    Section {
+                        Button {
+                            showAbout = true
+                        } label: {
+                            MenuRow(icon: "app.fill", title: appStrings.aboutApp, color: .purple)
+                        }
+                        .buttonStyle(.plain)
+
+                        Link(destination: URL(string: SupportLinks.support)!) {
+                            MenuRow(icon: "questionmark.circle.fill", title: "サポート", color: .blue)
+                        }
+
+                        Link(destination: URL(string: SupportLinks.privacyPolicy)!) {
+                            MenuRow(icon: "hand.raised.fill", title: "プライバシーポリシー", color: .gray)
+                        }
+
+                        Link(destination: URL(string: SupportLinks.terms)!) {
+                            MenuRow(icon: "doc.text.fill", title: "利用規約", color: .gray)
+                        }
                     }
                 }
-                .listStyle(.insetGrouped)
                 .scrollContentBackground(.hidden)
+
+                // フッター（バージョン）
+                VStack {
+                    Spacer()
+                    VStack(spacing: 4) {
+                        Divider()
+                            .background(.white.opacity(0.2))
+                        Text("v\(appVersion)")
+                            .font(.system(size: 15))
+                            .foregroundColor(AppColors.textSecondary)
+                            .padding(.vertical, 8)
+                    }
+                    .background(Color.black.opacity(0.1))
+                }
             }
-            .navigationTitle(appStrings.settings)
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    // 「設定」ではなくアプリ名を出す。
+                    // ここは設定だけでなく、使い方や問い合わせも含む入口のため。
+                    Text(appDisplayName)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(AppColors.textPrimary)
+                }
+
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    // 文字よりアイコンの方が、どの言語でも同じ幅で収まる
                     Button {
                         dismiss()
                     } label: {
@@ -143,40 +223,23 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showLanguageSelect) {
                 LanguageChangeView()
+                    .environmentObject(appStrings)
             }
             .sheet(isPresented: $showPurchaseView) {
                 PurchaseView()
+                    .environmentObject(appStrings)
+                    .environmentObject(purchaseManager)
             }
             .sheet(isPresented: $showAbout) {
                 AboutView()
+                    .environmentObject(appStrings)
             }
-            .sheet(isPresented: $showDocumentPicker) {
-                DocumentPicker(
-                    onPick: { url in
-                        let result = DataManager.shared.importData(from: url)
-                        if result.success {
-                            alertMessage = appStrings.importSuccess(result.count)
-                        } else {
-                            alertMessage = result.error ?? appStrings.importError
-                        }
-                        showAlert = true
-                    },
-                    onCancel: {}
-                )
-            }
-            .sheet(isPresented: $showShareSheet) {
-                if let url = exportURL {
-                    ShareSheet(items: [url], completion: nil)
-                }
-            }
-            .alert("", isPresented: $showAlert) {
-                Button("OK") { }
-            } message: {
-                Text(alertMessage)
+            .alert(alertMessage, isPresented: $showAlert) {
+                Button("OK", role: .cancel) { }
             }
         }
     }
-    
+
     private func exportData() {
         if let url = DataManager.shared.exportAllData() {
             exportURL = url
@@ -352,70 +415,46 @@ struct PurchaseCard: View {
 struct AboutView: View {
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var appStrings: AppStrings
-    
+
     var body: some View {
         NavigationStack {
             ZStack {
-                AppColors.background
+                // 他の画面と同じ背景にする
+                AnimatedGradientBackground()
+
+                LiquidShapeView()
                     .ignoresSafeArea()
-                
+                    .opacity(0.3)
+
+                // アイコン画像は置かない。
+                // Assets に icon_image.png が imageset ではなく
+                // ただのファイルとして入っており、読み込めていなかった。
+                //
+                // バージョンとリンク類もここには出さない。
+                // 呼び出し元のメニューに同じものが並んでいて重複するため。
                 ScrollView {
-                    VStack(spacing: 24) {
-                        // アプリアイコン
-                        Image("icon_image")
-                            .resizable()
-                            .frame(width: 120, height: 120)
-                            .cornerRadius(24)
-                        
+                    VStack(spacing: 20) {
                         Text("バイトチームコンテスト")
                             .font(.title)
                             .fontWeight(.bold)
                             .foregroundColor(AppColors.textPrimary)
-                        
-                        // 番号を直接書くと、バージョンを上げたときに直し忘れる。
-                        // Info.plist の値をそのまま出す。
-                        Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")")
-                            .font(.system(size: 15))
-                            .foregroundColor(AppColors.textSecondary)
-                        
-                        // 説明
+
                         Text("サーモンランのバイトチームコンテストをサポートするアプリです。Wave管理、音声認識、タイミングガイドなどの機能を提供します。")
                             .font(.body)
                             .foregroundColor(AppColors.textPrimary)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal)
-                        
-                        Divider()
-                        
-                        // 気に入った人が友達に薦められるようにする。
-                        // 広告や課金より角が立たない形で広がる導線。
-                        ShareLink(item: SupportLinks.shareMessage) {
-                            Label("このアプリを紹介する", systemImage: "square.and.arrow.up")
-                                .foregroundColor(AppColors.primary)
-                        }
-
-                        Divider()
-
-                        // リンク
-                        // サポートとポリシーは4アプリ分を app-support リポジトリで公開している
-                        // https://github.com/WaltRyusan/app-support
-                        Link("サポート", destination: URL(string: SupportLinks.support)!)
-                            .foregroundColor(AppColors.primary)
-
-                        Link("プライバシーポリシー", destination: URL(string: SupportLinks.privacyPolicy)!)
-                            .foregroundColor(AppColors.primary)
-
-                        Link("利用規約", destination: URL(string: SupportLinks.terms)!)
-                            .foregroundColor(AppColors.primary)
                     }
+                    .padding(.top, 40)
                     .padding()
                 }
             }
             .navigationTitle(appStrings.aboutApp)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(AppColors.surface.opacity(0.9), for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    // 文字よりアイコンの方が、どの言語でも同じ幅で収まる
                     Button {
                         dismiss()
                     } label: {
