@@ -10,7 +10,12 @@ import SwiftUI
 struct HomeView: View {
     @State private var selectedTab = 0
     @EnvironmentObject var appStrings: AppStrings
-    
+    /// 満足度シートと広告告知の出し先。
+    /// どのタブにいても出せるよう、タブより上のここで受ける。
+    @StateObject private var launchManager = AppLaunchManager.shared
+    /// 「広告を消す」から購入画面へ送るため
+    @State private var showSettings = false
+
     var body: some View {
         TabView(selection: $selectedTab) {
             MainView()
@@ -32,6 +37,20 @@ struct HomeView: View {
                 .tag(2)
         }
         .tint(AppColors.primary) // アクティブ色をオレンジに設定
+        .sheet(isPresented: $launchManager.showReviewPrompt) {
+            ReviewPromptSheet { answer in
+                launchManager.handleReviewAnswer(answer)
+            }
+        }
+        .sheet(isPresented: $launchManager.showAdWarning) {
+            AdWarningSheet {
+                showSettings = true
+            }
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
+                .environmentObject(appStrings)
+        }
     }
 }
 

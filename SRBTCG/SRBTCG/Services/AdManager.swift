@@ -36,12 +36,9 @@ class AdManager: NSObject, ObservableObject {
     // 状態管理
     @Published var isBannerLoaded = false
     
-    // SharedPreferencesキー
-    private let usageCountKey = "adManager_usageCount"
-    private let reviewShownKey = "adManager_reviewShown"
-    
-    // お試し回数
-    private let trialCount = 3
+    // 起動回数とレビュー催促の管理は AppLaunchManager が持つ。
+    // 以前はここで「バチコン再生の完了回数」を数えていたが、
+    // 連続で再生したいときに毎回割り込まれて使いづらかった。
     
     /// 初期化済みか
     ///
@@ -146,33 +143,15 @@ class AdManager: NSObject, ObservableObject {
         }
     }
     
-    // MARK: - Usage Count Management
-    
-    /// 使用回数を取得
-    func getUsageCount() -> Int {
-        UserDefaults.standard.integer(forKey: usageCountKey)
-    }
-    
-    /// 使用回数をインクリメント
-    @discardableResult
-    func incrementUsageCount() -> Int {
-        let count = getUsageCount() + 1
-        UserDefaults.standard.set(count, forKey: usageCountKey)
-        return count
-    }
-    
-    /// お試し期間中か
-    func isTrialPeriod() -> Bool {
-        getUsageCount() < trialCount
-    }
-    
-    /// 広告を表示すべきか（課金状態も考慮）
+    // MARK: - 表示可否
+
+    /// 広告を表示すべきか（お試し期間と課金状態を見る）
     func shouldShowAds() async -> Bool {
-        // お試し期間中は広告なし
-        if isTrialPeriod() {
+        // 新規ユーザーの保護期間中は広告なし
+        if await AppLaunchManager.shared.isFreeAdsPeriod {
             return false
         }
-        
+
         // 広告非表示購入済みなら広告なし
         return await !PurchaseManager.shared.hasAdFree()
     }
@@ -212,45 +191,19 @@ class AdManager: NSObject, ObservableObject {
 
     // MARK: - Event Handlers
 
-    /// バチコン再生完了時
-    func onBigRunPlaybackCompleted() async {
-        let count = incrementUsageCount()
-
-        // 3回目完了時はレビュー促進
-        if count == trialCount {
-            await showReviewPrompt()
-        }
-        // 4回目以降はインタースティシャル広告
-        else if count > trialCount {
-            await showInterstitialAd()
-        }
-    }
-
-    /// サーモンランガイド使用時
-    func onSalmonRunGuideUsed() async {
-        guard !isTrialPeriod() else { return }
-        await showInterstitialAd()
-    }
-
-    // MARK: - Review Prompt
-    
-    /// レビュー促進を表示
+    /// 起動時に全画面広告を出す（1日1回まで）
+    ///
+    /// 再生の前後では出さない。
+    /// Waveを続けて回したいときに毎回割り込まれると使い物にならないため。
     @MainActor
-    private func showReviewPrompt() async {
-        // iOS 18以降とそれ以前で処理を分岐
-        if #available(iOS 18.0, *) {
-            // iOS 18以降
-            if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-                AppStore.requestReview(in: scene)
-            }
-        } else {
-            // iOS 17以前
-            if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-                SKStoreReviewController.requestReview(in: scene)
-            }
-        }
-        UserDefaults.standard.set(true, forKey: reviewShownKey)
+    func onAppLaunch() async {
+        guard AppLaunchManager.shared.shouldShowInterstitial else { return }
+        // 起動直後は画面の描画と重なるので少し待つ
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
+        await showInterstitialAd()
+        AppLaunchManager.shared.recordInterstitialShown()
     }
+
 }
 // MARK: - FullScreenContentDelegate
 

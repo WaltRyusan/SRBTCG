@@ -82,12 +82,16 @@ struct SRBTCGApp: App {
                         adManager.initialize()
                         kDebugModePrint("広告マネージャー初期化完了")
 
-                        // 起動時の全画面広告。
+                        // 起動回数を数える。
+                        // レビュー催促と広告の解禁はこの回数で決まる。
+                        AppLaunchManager.shared.onAppLaunch()
+
+                        // 起動時の全画面広告（1日1回まで）。
                         // SDKの開始と広告の読み込みが終わってから出したいので少し待つ。
                         // お試し期間中と購入済みの場合は showInterstitialAd 側で弾かれる。
                         Task {
                             try? await Task.sleep(nanoseconds: 4_000_000_000)
-                            await adManager.showInterstitialAd()
+                            await adManager.onAppLaunch()
                         }
                     }
             }
