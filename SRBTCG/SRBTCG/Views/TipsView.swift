@@ -69,14 +69,14 @@ struct TipsView: View {
                 selectedCategory = category
             }
         } label: {
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 Image(systemName: category.icon)
-                    .font(.system(size: 12))
+                    .font(.system(size: 15))
                 Text(category.label)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 16, weight: .semibold))
             }
-            .padding(.horizontal, 14)
-            .frame(height: 36)
+            .padding(.horizontal, 18)
+            .frame(height: 44)
             .background(
                 isSelected ? AppColors.primary : AppColors.surface.opacity(0.6),
                 in: Capsule()

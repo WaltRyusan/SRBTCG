@@ -42,22 +42,29 @@ struct MainView: View {
     }
     
     var emptyStateView: some View {
-        VStack(spacing: 30) {
-            Text(appStrings.noSavedLists)
-                .foregroundColor(AppColors.textSecondary)
-                .multilineTextAlignment(.center)
-                .padding()
-                .liquidGlassCard()
-            
+        // 案内文は上寄り、ボタンは画面の中央。
+        // VStackに並べるとボタンが文章に引っぱられて上がってしまうので、
+        // 別々に重ねて置いている。
+        ZStack {
             // プラスボタン（リストが空の時も表示）
             SphericalButton(
                 icon: "plus",
                 color: AppColors.golden,
                 action: createNewList
             )
+
+            VStack {
+                // 枠や背景は付けない。案内文が一文あるだけなので、
+                // カードで囲うと主張が強くなりすぎる。
+                Text(appStrings.noSavedLists)
+                    .foregroundColor(AppColors.textSecondary)
+                    .multilineTextAlignment(.center)
+
+                Spacer()
+            }
+            .padding(.top, 60)
         }
         .padding(.horizontal)
-        .padding(.bottom, 100)
     }
     
     var listView: some View {

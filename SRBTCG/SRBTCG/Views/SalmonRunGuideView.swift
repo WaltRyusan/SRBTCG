@@ -29,23 +29,24 @@ struct SalmonRunGuideView: View {
     
     var body: some View {
         NavigationStack {
-            ZStack {
+            ZStack(alignment: .top) {
                 // MainViewと同じグラデーション背景
                 AnimatedGradientBackground()
-                
+
                 LiquidShapeView()
                     .ignoresSafeArea()
                     .opacity(0.3)
-                
-                VStack(spacing: 16) {
+
+                // 広告バナーのぶん縦が狭くなるので、ブロック間は詰めている。
+                // 上端はナビゲーションバーのすぐ下から始める。
+                VStack(spacing: 10) {
                     // キケン度選択
                     VStack(alignment: .leading, spacing: 10) {
                         Text(appStrings.hazardLevel)
                             .font(.headline)
                             .foregroundColor(AppColors.textPrimary)
-                            // ナビゲーションバーの下に潜り込んで文字が欠けていたため、
-                            // バーの高さぶんの余白を確保する
-                            .padding(.top, 52)
+                            // ナビゲーションバーに重ならない程度に空ける
+                            .padding(.top, 8)
 
                         Picker("", selection: $selectedHazard) {
                             ForEach(HazardLevel.allCases) { level in
@@ -84,38 +85,42 @@ struct SalmonRunGuideView: View {
                     .cornerRadius(10)
                     .padding(.horizontal)
 
-                    // 説明文
-                    // 広告バナーのぶん縦が狭くなるので、上下の間隔を詰めている
-                    Text("※ 以下のタイミングで音声アナウンスが流れます")
-                        .font(.caption)
-                        .foregroundColor(AppColors.textSecondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                        .padding(.vertical, -4)
-                    
-                    // タイミング表示（高さを拡張してスクロールを最小限に）
-                    VStack(alignment: .leading, spacing: 8) {
-                        // タイミングリスト
-                        ForEach(hazard.timings, id: \.second) { timing in
-                            TimingRow(
-                                seconds: timing.second,
-                                messageKey: timing.key,
-                                appStrings: appStrings,
-                                isDisabled: timing.key.starts(with: "spawnDirectionChange") && !announceSpawnDirectionChange
-                            )
+                    // 説明文とタイミング一覧はひと続きのものなので、
+                    // 親のspacingを挟まずに近づける
+                    VStack(spacing: 6) {
+                        Text("※ 以下のタイミングで音声アナウンスが流れます")
+                            .font(.caption)
+                            .foregroundColor(AppColors.textSecondary)
+                            .multilineTextAlignment(.center)
+
+                        // タイミング一覧だけをスクロールさせる。
+                        // キケン度MAXでは項目が15個近くになり画面に収まらないが、
+                        // キケン度の選択と再生ボタンは常に触れる位置に置いておきたい。
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 8) {
+                                ForEach(hazard.timings, id: \.second) { timing in
+                                    TimingRow(
+                                        seconds: timing.second,
+                                        messageKey: timing.key,
+                                        appStrings: appStrings,
+                                        isDisabled: timing.key.starts(with: "spawnDirectionChange") && !announceSpawnDirectionChange
+                                    )
+                                }
+                            }
+                            .padding(.vertical, 10)
+                            .padding(.horizontal, 12)
                         }
+                        .background(AppColors.surface.opacity(0.5))
+                        .cornerRadius(12)
                     }
-                    .padding(.vertical, 10)
-                    .padding(.horizontal, 12)
-                    .background(AppColors.surface.opacity(0.5))
-                    .cornerRadius(12)
                     .padding(.horizontal)
+                    // 一覧だけが伸び縮みし、下の再生ボタンは常に同じ位置に来る
                     .frame(maxHeight: .infinity)
-                    
-                    // 球体の再生/停止ボタン
+
+                    // 球体の再生/停止ボタン（位置は固定）
                     HStack {
                         Spacer()
-                        
+
                         SphericalButton(
                             icon: isPlaying ? "stop.fill" : "play.fill",
                             color: isPlaying ? AppColors.danger : AppColors.primary,
