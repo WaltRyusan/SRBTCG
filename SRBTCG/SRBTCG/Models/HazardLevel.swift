@@ -95,17 +95,22 @@ enum HazardLevel: Int, CaseIterable, Identifiable {
 
     /// 最終湧きの残り秒数
     ///
-    /// キケン度が高いほど早く始まる。
-    /// ⚠️ この値は以前の実装から引き継いだもので、裏付けを取れていない。
-    ///    湧き方向のような検証データが見つかったら直すこと。
-    var finalSpawnSecond: Int {
-        switch self {
-        case .low, .midLow: return 10
-        case .mid:          return 15
-        case .high:         return 20
-        case .max:          return 25
-        }
-    }
+    /// **キケン度によらず常に28秒。**
+    /// オオモノシャケが現れるのは残り100〜28秒の間だけで、
+    /// それ以降はコジャケしか出ない（「28秒ルール」）。
+    ///
+    /// 以前は 10 / 15 / 20 / 25 秒とキケン度ごとに変えていたが、
+    /// これは裏付けのない値だった。
+    ///
+    /// 28秒が湧き方向の数列（spawnDirectionSeconds）に
+    /// どのキケン度でも必ず現れるのは偶然ではなく、
+    /// ここが湧きの区切りになっているため。
+    ///
+    /// 出典: スプラトゥーン3 攻略＆検証Wiki「サーモンラン」
+    /// https://wikiwiki.jp/splatoon3mix/サーモンラン
+    static let finalSpawnSecond = 28
+
+    var finalSpawnSecond: Int { Self.finalSpawnSecond }
 
     /// 「納品数を意識」を出す残り秒数
     static let deliveryReminderSecond = 30
@@ -116,7 +121,10 @@ enum HazardLevel: Int, CaseIterable, Identifiable {
     var timings: [(second: Int, key: String)] {
         var table: [Int: String] = [:]
 
-        for (index, second) in spawnDirectionSeconds.enumerated() {
+        // 湧き方向は残り28秒までしか意味がない。
+        // それ以降はオオモノが出ないので、方向が変わっても知らせる価値がない。
+        for (index, second) in spawnDirectionSeconds.enumerated()
+        where second >= Self.finalSpawnSecond {
             table[second] = "spawnDirectionChange\(index + 1)"
         }
         // 重なったら上書きする。湧き方向は次の周期でまた鳴るが、
