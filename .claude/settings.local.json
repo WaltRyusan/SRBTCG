@@ -15,7 +15,9 @@
       "Bash(xcodebuild test -scheme SRBTCG -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.1' -enableCodeCoverage YES)",
       "Bash(find /Users/ryusan1215/MobileApp/SRBTCG -name \"*.swift\" -exec grep -l \"import.*Firebase\\|import.*Auth\\|import.*Security\\|import.*LocalAuthentication\\|import.*CryptoKit\" {} ;)",
       "Bash(git push)",
-      "Bash(git add -A)"
+      "Bash(git add -A)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nInitial implementation of Salmon Run Team Contest Guide App\n\nFeatures:\n- Dual-tab interface: バチコン (Team Contest) and ビッグラン (Big Run)\n- Wave text management with STT (Speech-to-Text) recording\n- Text-to-Speech playback with precise timing\n- Export/Import functionality for sharing wave lists\n- Spawn direction change announcement toggle\n- Multi-language support (JP/EN/KR/CN)\n- Material design with liquid glass effects\n- Fullscreen support\n\nRecent improvements:\n- Reversed list order (newest first) with plus button at top\n- Added 13-second wait time between waves in Big Run mode\n- Implemented wave repeat functionality\n- Added wave number announcements (Wave1開始, Wave1クリア, etc.)\n- Changed 30-second announcement to \"納品数を意識\"\n- Spawn direction items show with strikethrough when disabled\n- Updated spawn direction icon to left-right arrows\n- Fixed navigation bar transparency and color scheme\n- iOS default tab bar design with orange active color\n\n🤖 Generated with [Claude Code](https://claude.ai/code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git push -u origin main)"
     ],
     "deny": [],
     "ask": []

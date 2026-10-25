@@ -150,8 +150,11 @@ class AdManager: NSObject, ObservableObject {
     func showInterstitialAd() async {
         guard await shouldShowAds() else { return }
 
-        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let root = scene.windows.first?.rootViewController,
+        // connectedScenes.first は並び順が保証されず、UIWindowScene とも限らない。
+        // バナー側（BannerRepresentable）と同じ取り方に揃える。
+        guard let root = UIApplication.shared.connectedScenes
+                .compactMap({ ($0 as? UIWindowScene)?.keyWindow?.rootViewController })
+                .first,
               let ad = interstitialAd else { return }
 
         ad.present(from: root)
