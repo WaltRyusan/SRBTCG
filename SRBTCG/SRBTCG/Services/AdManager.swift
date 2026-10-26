@@ -45,11 +45,18 @@ class AdManager: NSObject, ObservableObject {
     /// 起動のたびに二重に走っていた。
     private var isInitialized = false
 
-    /// 広告を出さない状態か（購入済み、またはお試し期間中）
+    /// 買い切りで広告を消しているか
     ///
     /// 購入状態の確認が非同期なので、判定結果をここに持って
     /// ビューからは同期的に見られるようにしている。
-    @Published private(set) var isAdFree = true
+    @Published private(set) var isAdsRemoved = true
+
+    /// 画面をふさぐ広告を出さない状態か
+    ///
+    /// 購入済みか、新規ユーザーのお試し期間中。
+    /// バナーはこの判定を使わない。場所を取るだけで操作を妨げないので
+    /// 最初から出す。あとから急に現れるほうが「広告が増えた」と感じさせる。
+    @Published private(set) var isInterstitialFree = true
 
     private var interstitialAd: InterstitialAd?
 
@@ -92,7 +99,8 @@ class AdManager: NSObject, ObservableObject {
     /// ビューからは同期的に見られるようにしている。
     @MainActor
     func refreshAdFreeState() async {
-        isAdFree = !(await shouldShowAds())
+        isAdsRemoved = await PurchaseManager.shared.hasAdFree()
+        isInterstitialFree = !(await shouldShowAds())
     }
 
     /// 広告を出す状態のときだけ読み込む
@@ -101,18 +109,20 @@ class AdManager: NSObject, ObservableObject {
     /// 続いてしまう。購入した人に対して筋が通らないのでリクエスト自体を送らない。
     @MainActor
     private func loadAdsIfAllowed() {
-        guard !isAdFree else { return }
-        // バナーは AdBannerView が置かれた画面ごとに読み込む
+        // バナーは AdBannerView が置かれた画面ごとに読み込む。
+        // 全画面広告はお試し期間が明けてから。
+        guard !isInterstitialFree else { return }
         loadInterstitial()
     }
 
     /// 購入が成立したときに呼ぶ。読み込み済みの広告を捨てる。
     ///
-    /// バナーは isAdFree を見て各ビューが自分で消すので、ここでは触らない。
+    /// バナーは isAdsRemoved を見て各ビューが自分で消すので、ここでは触らない。
     @MainActor
     func discardLoadedAds() {
         interstitialAd = nil
-        isAdFree = true
+        isAdsRemoved = true
+        isInterstitialFree = true
     }
 
     // MARK: - 読み込み
@@ -193,7 +203,7 @@ extension AdManager: FullScreenContentDelegate {
     /// 閉じられたら次の全画面広告を用意しておく
     nonisolated func adDidDismissFullScreenContent(_ ad: FullScreenPresentingAd) {
         Task { @MainActor in
-            guard !self.isAdFree else { return }
+            guard !self.isInterstitialFree else { return }
             self.loadInterstitial()
         }
     }
@@ -201,7 +211,7 @@ extension AdManager: FullScreenContentDelegate {
     nonisolated func ad(_ ad: FullScreenPresentingAd,
                         didFailToPresentFullScreenContentWithError error: Error) {
         Task { @MainActor in
-            guard !self.isAdFree else { return }
+            guard !self.isInterstitialFree else { return }
             self.loadInterstitial()
         }
     }
@@ -224,7 +234,8 @@ struct AdBannerView: View {
 
     var body: some View {
         Group {
-            if !adManager.isAdFree {
+            // 起動回数は見ない。バナーは最初から出す方針のため。
+            if !adManager.isAdsRemoved {
                 BannerRepresentable(adUnitID: adManager.bannerAdUnitID) {
                     isLoaded = true
                 }
