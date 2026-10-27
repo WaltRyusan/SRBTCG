@@ -39,8 +39,6 @@ targets:
   SRBTCG:
     type: application
     platform: iOS
-    # iPhone のみ。iPad 対応は v2 で検討する
-    deviceFamily: [1]
     sources:
       - path: SRBTCG
       # InfoPlist.strings（アプリ名のローカライズ）
@@ -53,6 +51,9 @@ targets:
         product: GoogleMobileAds
     settings:
       base:
+        # iPhone のみ。iPad 対応は v2 で検討する
+        # xcodegen に deviceFamily というキーは無く、ここでしか指定できない。
+        TARGETED_DEVICE_FAMILY: "1"
         PRODUCT_BUNDLE_IDENTIFIER: com.ryusan.SRBTCG
         PRODUCT_NAME: SRBTCG
         INFOPLIST_FILE: Info.plist
