@@ -60,6 +60,12 @@ class AdManager: NSObject, ObservableObject {
 
     private var interstitialAd: InterstitialAd?
 
+    /// 全画面広告を出す処理の途中か
+    ///
+    /// 起動時の呼び出しと、起動直後の復帰判定（scenePhase が .active になる）が
+    /// 重なって走るため。待っている間に2本目が判定を通ると、同じ日に2回出てしまう。
+    private var isShowingInterstitial = false
+
     private override init() {
         super.init()
         initialize()
@@ -156,19 +162,22 @@ class AdManager: NSObject, ObservableObject {
     /// 全画面広告を表示する
     ///
     /// 出す条件を満たさないときは何もしない。
+    /// - Returns: 実際に表示したか
     @MainActor
-    func showInterstitialAd() async {
-        guard await shouldShowAds() else { return }
+    @discardableResult
+    func showInterstitialAd() async -> Bool {
+        guard await shouldShowAds() else { return false }
 
         // connectedScenes.first は並び順が保証されず、UIWindowScene とも限らない。
         // バナー側（BannerRepresentable）と同じ取り方に揃える。
         guard let root = UIApplication.shared.connectedScenes
                 .compactMap({ ($0 as? UIWindowScene)?.keyWindow?.rootViewController })
                 .first,
-              let ad = interstitialAd else { return }
+              let ad = interstitialAd else { return false }
 
         ad.present(from: root)
         interstitialAd = nil  // 使い切ったので次を読み込む（delegateで再取得）
+        return true
     }
     
     // リワード広告は実装しない。
@@ -189,11 +198,36 @@ class AdManager: NSObject, ObservableObject {
     /// Waveを続けて回したいときに毎回割り込まれると使い物にならないため。
     @MainActor
     func onAppLaunch() async {
-        guard AppLaunchManager.shared.shouldShowInterstitial else { return }
+        await showInterstitialIfNeeded()
+    }
+
+    /// 復帰時（scenePhase が .active になったとき）に全画面広告を出す（1日1回まで）
+    ///
+    /// 起動時と回数を共有する。何度開いても広告は1日1回で済む。
+    @MainActor
+    func onAppResume() async {
+        await showInterstitialIfNeeded()
+    }
+
+    /// 起動時・復帰時の共通処理。条件を満たさなければ何もしない。
+    ///
+    /// 記録は実際に表示できたときだけ行う。
+    /// 起動直後の復帰判定は広告の読み込みより先に走るので、
+    /// 出せなかった回まで記録すると、その日の1回を出さないまま使い切ってしまう。
+    @MainActor
+    private func showInterstitialIfNeeded() async {
+        guard !isShowingInterstitial,
+              AppLaunchManager.shared.shouldShowInterstitial else { return }
+        isShowingInterstitial = true
+        defer { isShowingInterstitial = false }
+
         // 起動直後は画面の描画と重なるので少し待つ
         try? await Task.sleep(nanoseconds: 2_000_000_000)
-        await showInterstitialAd()
-        AppLaunchManager.shared.recordInterstitialShown()
+        // 待っている間に別の経路で出ていたら出さない
+        guard AppLaunchManager.shared.shouldShowInterstitial else { return }
+        if await showInterstitialAd() {
+            AppLaunchManager.shared.recordInterstitialShown()
+        }
     }
 
 }

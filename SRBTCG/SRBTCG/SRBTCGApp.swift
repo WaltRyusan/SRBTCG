@@ -13,6 +13,7 @@ struct SRBTCGApp: App {
     @StateObject private var appStrings = AppStrings.shared
     @StateObject private var purchaseManager = PurchaseManager.shared
     @StateObject private var adManager = AdManager.shared
+    @Environment(\.scenePhase) private var scenePhase
     
     init() {
         // オーディオセッションの設定
@@ -92,6 +93,13 @@ struct SRBTCGApp: App {
                         Task {
                             try? await Task.sleep(nanoseconds: 4_000_000_000)
                             await adManager.onAppLaunch()
+                        }
+                    }
+                    // 全画面広告は起動時と復帰時だけ。1日1回に収める。
+                    // 画面の遷移では出さない。操作の途中で割り込まれると使い物にならない。
+                    .onChange(of: scenePhase) { _, phase in
+                        if phase == .active {
+                            Task { await adManager.onAppResume() }
                         }
                     }
             }
