@@ -10,33 +10,39 @@ import XCTest
 
 final class SRBTCGTests: XCTestCase {
     
+    /// テストで表示言語を切り替えるので、元の言語を覚えておいて戻す
+    private var originalLanguage: AppLanguage = .ja
+
     override func setUpWithError() throws {
-        // テスト実行前のセットアップ
+        originalLanguage = AppStrings.shared.currentLanguage
     }
     
     override func tearDownWithError() throws {
-        // テスト実行後のクリーンアップ
+        // saveLanguage は使わず、保存済みの設定には触れない
+        AppStrings.shared.currentLanguage = originalLanguage
     }
     
     // MARK: - DateUtil Tests
     
     func testFormattedToday() {
+        // 日付の書式は表示言語で変わる。日本語で確かめる
+        AppStrings.shared.currentLanguage = .ja
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MM月dd日"
+        let expectedDate = formatter.string(from: Date())
+
         // 既存タイトルがない場合
         let title1 = DateUtil.formattedToday(existingTitles: [])
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy/MM/dd"
-        let expectedDate = formatter.string(from: Date())
         XCTAssertEqual(title1, expectedDate)
         
-        // 既存タイトルがある場合
-        let existingTitles = [expectedDate]
-        let title2 = DateUtil.formattedToday(existingTitles: existingTitles)
-        XCTAssertEqual(title2, "\(expectedDate)_2")
+        // 既存タイトルがある場合は (2) を付ける
+        let title2 = DateUtil.formattedToday(existingTitles: [expectedDate])
+        XCTAssertEqual(title2, "\(expectedDate) (2)")
         
-        // 複数の既存タイトルがある場合
-        let existingTitles2 = [expectedDate, "\(expectedDate)_2", "\(expectedDate)_3"]
+        // 複数の既存タイトルがある場合は空いている番号を付ける
+        let existingTitles2 = [expectedDate, "\(expectedDate) (2)", "\(expectedDate) (3)"]
         let title3 = DateUtil.formattedToday(existingTitles: existingTitles2)
-        XCTAssertEqual(title3, "\(expectedDate)_4")
+        XCTAssertEqual(title3, "\(expectedDate) (4)")
     }
     
     // MARK: - AppStrings Tests
@@ -45,35 +51,35 @@ final class SRBTCGTests: XCTestCase {
         let appStrings = AppStrings.shared
         
         // 日本語テスト
-        appStrings.changeLanguage(.ja)
+        appStrings.currentLanguage = .ja
         XCTAssertEqual(appStrings.instructionList, "指示リスト")
         XCTAssertEqual(appStrings.cancel, "キャンセル")
         
         // 英語テスト
-        appStrings.changeLanguage(.en)
+        appStrings.currentLanguage = .en
         XCTAssertEqual(appStrings.instructionList, "Instruction List")
         XCTAssertEqual(appStrings.cancel, "Cancel")
         
         // 韓国語テスト
-        appStrings.changeLanguage(.ko)
+        appStrings.currentLanguage = .ko
         XCTAssertEqual(appStrings.instructionList, "지시 목록")
         XCTAssertEqual(appStrings.cancel, "취소")
         
         // 中国語テスト
-        appStrings.changeLanguage(.zhCN)
+        appStrings.currentLanguage = .zhCN
         XCTAssertEqual(appStrings.instructionList, "指示列表")
         XCTAssertEqual(appStrings.cancel, "取消")
     }
     
     func testAppStringsParameterizedText() {
         let appStrings = AppStrings.shared
-        appStrings.changeLanguage(.ja)
+        appStrings.currentLanguage = .ja
         
         // パラメータ付き文字列のテスト
         XCTAssertEqual(appStrings.waveStart(1), "Wave 1 開始")
         XCTAssertEqual(appStrings.waveEnd(3), "Wave 3 終了")
-        XCTAssertEqual(appStrings.secondLabel(30), "30秒")
-        XCTAssertEqual(appStrings.countdownLabel(5), "開始まで 5")
+        XCTAssertEqual(appStrings.secondLabel(30), "30 秒")
+        XCTAssertEqual(appStrings.countdownLabel(5), "開始まで 5秒")
         XCTAssertEqual(appStrings.progressLabel(2, 45), "Wave 2 - 45秒")
         XCTAssertEqual(appStrings.intervalLabel(10), "インターバル 10秒")
     }
@@ -91,8 +97,7 @@ final class SRBTCGTests: XCTestCase {
         XCTAssertNotNil(AppColors.textSecondary)
         XCTAssertNotNil(AppColors.buttonPrimary)
         XCTAssertNotNil(AppColors.buttonText)
-        XCTAssertNotNil(AppColors.destructive)
-        XCTAssertNotNil(AppColors.success)
+        XCTAssertNotNil(AppColors.danger)
     }
     
     // MARK: - TTSManager Tests
@@ -101,17 +106,6 @@ final class SRBTCGTests: XCTestCase {
         let instance1 = TTSManager.shared
         let instance2 = TTSManager.shared
         XCTAssertTrue(instance1 === instance2, "TTSManager should be singleton")
-    }
-    
-    func testTTSManagerLanguageChange() {
-        let ttsManager = TTSManager.shared
-        
-        // 言語変更テスト
-        ttsManager.changeLanguage(.ja)
-        // 実際の音声合成はモックが必要なためスキップ
-        
-        ttsManager.changeLanguage(.en)
-        // 実際の音声合成はモックが必要なためスキップ
     }
     
     // MARK: - STTManager Tests
@@ -131,9 +125,9 @@ final class SRBTCGTests: XCTestCase {
     }
     
     func testProductIdentifiers() {
-        XCTAssertEqual(PurchaseManager.ProductIdentifier.sttExport.rawValue, "stt_export")
-        XCTAssertEqual(PurchaseManager.ProductIdentifier.adFree.rawValue, "ad_free")
-        XCTAssertEqual(PurchaseManager.ProductIdentifier.premiumBundle.rawValue, "premium_bundle")
+        XCTAssertEqual(PurchaseManager.productSttExport, "stt_export")
+        XCTAssertEqual(PurchaseManager.productAdFree, "ad_free")
+        XCTAssertEqual(PurchaseManager.productPremiumBundle, "premium_bundle")
     }
     
     // MARK: - AdManager Tests
