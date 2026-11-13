@@ -73,10 +73,10 @@ premium_bundle: "プレミアムバンドル" // ¥400
 
 ### プロジェクト固有のビルドコマンド
 ```bash
-# ビルド
+# ビルド（実機向け。~/.claude/CLAUDE.md のとおり）
 xcodebuild build -project SRBTCG.xcodeproj \
   -scheme SRBTCG \
-  -destination 'platform=iOS Simulator,name=iPhone 16'
+  -destination 'generic/platform=iOS' -allowProvisioningUpdates
 
 # アーカイブ（リリース用）
 xcodebuild archive -project SRBTCG.xcodeproj \
