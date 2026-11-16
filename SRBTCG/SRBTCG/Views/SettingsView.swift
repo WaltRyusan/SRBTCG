@@ -197,22 +197,15 @@ struct SettingsView: View {
                             MenuRow(icon: "doc.text.fill", title: "利用規約", color: .gray)
                         }
                     }
+
+                    // バージョン。画面下に固定すると最後の行と重なるので、一覧の末尾に置いてスクロールで見せる
+                    Text("v\(appVersion)")
+                        .font(.system(size: 15))
+                        .foregroundColor(AppColors.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .listRowBackground(Color.clear)
                 }
                 .scrollContentBackground(.hidden)
-
-                // フッター（バージョン）
-                VStack {
-                    Spacer()
-                    VStack(spacing: 4) {
-                        Divider()
-                            .background(.white.opacity(0.2))
-                        Text("v\(appVersion)")
-                            .font(.system(size: 15))
-                            .foregroundColor(AppColors.textSecondary)
-                            .padding(.vertical, 8)
-                    }
-                    .background(Color.black.opacity(0.1))
-                }
             }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
