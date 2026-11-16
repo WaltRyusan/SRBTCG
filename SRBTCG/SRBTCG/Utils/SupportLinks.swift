@@ -18,6 +18,8 @@ enum SupportLinks {
 
     /// App Store Connect の「プライバシーポリシーURL」に登録するもの
     static let privacyPolicy = "https://waltryusan.github.io/app-support/srbtcg/privacy.html"
+    /// 同じ開発者のアプリ一覧。github.com/WaltRyusan/waltryusan.github.io で公開している
+    static let developerApps = "https://waltryusan.github.io/"
 
     /// 自前の規約は作らず、Appleの標準ライセンス契約を適用する
     static let terms = "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/"

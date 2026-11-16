@@ -9,6 +9,7 @@ import SwiftUI
 import StoreKit
 
 struct SettingsView: View {
+    @State private var showsDeveloperApps = false
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var appStrings: AppStrings
     @EnvironmentObject var purchaseManager: PurchaseManager
@@ -161,6 +162,18 @@ struct SettingsView: View {
                             )
                         }
                         .buttonStyle(.plain)
+
+                        // 同じ開発者のほかのアプリを、アプリ内ブラウザで見せる
+                        Button {
+                            showsDeveloperApps = true
+                        } label: {
+                            MenuRow(icon: "square.grid.2x2.fill", title: "開発者のほかのアプリ", color: .indigo)
+                        }
+                        .buttonStyle(.plain)
+                        .fullScreenCover(isPresented: $showsDeveloperApps) {
+                            SafariView(url: URL(string: SupportLinks.developerApps)!) { showsDeveloperApps = false }
+                                .ignoresSafeArea()
+                        }
                     }
 
                     // アプリ情報
