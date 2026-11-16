@@ -27,7 +27,7 @@ settings:
     # 他の3アプリと同じ開発者アカウント
     DEVELOPMENT_TEAM: 974LVD65BN
     CODE_SIGN_STYLE: Automatic
-    MARKETING_VERSION: "1.0"
+    MARKETING_VERSION: "1.0.0"
     CURRENT_PROJECT_VERSION: "1"
 
 packages:
