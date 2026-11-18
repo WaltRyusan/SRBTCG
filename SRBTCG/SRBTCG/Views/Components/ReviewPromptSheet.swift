@@ -33,11 +33,17 @@ struct ReviewPromptSheet: View {
                 .foregroundStyle(.pink)
                 .padding(.top, 28)
 
-            Text("サモランガイドは役に立っていますか？")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundColor(AppColors.textPrimary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 20)
+            VStack(spacing: 6) {
+                Text("いつもご利用ありがとうございます🙏")
+                    .font(.system(size: 15))
+                    .foregroundColor(AppColors.textSecondary)
+
+                Text("サモランガイドは役に立っていますか？")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(AppColors.textPrimary)
+            }
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 20)
 
             VStack(spacing: 8) {
                 Button {
@@ -75,7 +81,7 @@ struct ReviewPromptSheet: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(AppColors.background)
-        .presentationDetents([.height(300)])
+        .presentationDetents([.height(330)])
     }
 }
 
