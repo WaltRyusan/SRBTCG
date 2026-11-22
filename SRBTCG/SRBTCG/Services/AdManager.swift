@@ -89,9 +89,12 @@ class AdManager: NSObject, ObservableObject {
     ///
     /// IDFAが使えるかどうかが確定する前にSDKを開始すると、
     /// 最初の広告リクエストがトラッキング不可の扱いで飛んでしまう。
-    /// 起動と同時にダイアログを出すと画面の描画に重なるので1秒遅らせる。
+    /// 起動と同時にダイアログを出すと画面の描画に重なるので、まだ答えていない初回だけ1秒遅らせる。
     private func requestTrackingThenStartSDK() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+        // 答え済みならダイアログは出ないので待たない。
+        // 起動時のアプリ起動広告は読み込みを最大3秒しか待たないため、1秒でも早く始めたい
+        let delay: TimeInterval = ATTrackingManager.trackingAuthorizationStatus == .notDetermined ? 1.0 : 0
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             ATTrackingManager.requestTrackingAuthorization { _ in
                 // 許可・拒否のどちらでもSDKは開始する。
                 // 拒否された場合は非パーソナライズ広告に切り替わるだけ。
