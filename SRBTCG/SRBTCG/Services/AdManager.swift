@@ -27,10 +27,10 @@ class AdManager: NSObject, ObservableObject {
     fileprivate let bannerAdUnitID = "ca-app-pub-3940256099942544/2934735716"
     private let appOpenAdUnitID = "ca-app-pub-3940256099942544/5575463023"
     #else
-    // ⚠️ 提出前に AdMob 管理画面から取得した本番IDへ差し替える。
-    //    Info.plist の GADApplicationIdentifier も併せて差し替えること。
-    fileprivate let bannerAdUnitID = "ca-app-pub-XXXXX/XXXXX"
-    private let appOpenAdUnitID = "ca-app-pub-XXXXX/XXXXX"
+    // AdMob のアプリ「SRBTC_iOS」の本番ID。
+    // アプリIDは Info.plist の GADApplicationIdentifier にある。
+    fileprivate let bannerAdUnitID = "ca-app-pub-5831519704832915/1681048999"
+    private let appOpenAdUnitID = "ca-app-pub-5831519704832915/1485049932"
     #endif
     
     // 状態管理
