@@ -25,12 +25,12 @@ class AdManager: NSObject, ObservableObject {
     // AdMobアカウントが停止される恐れがあるため。
     #if DEBUG
     fileprivate let bannerAdUnitID = "ca-app-pub-3940256099942544/2934735716"
-    private let interstitialAdUnitID = "ca-app-pub-3940256099942544/4411468910"
+    private let appOpenAdUnitID = "ca-app-pub-3940256099942544/5575463023"
     #else
     // ⚠️ 提出前に AdMob 管理画面から取得した本番IDへ差し替える。
     //    Info.plist の GADApplicationIdentifier も併せて差し替えること。
     fileprivate let bannerAdUnitID = "ca-app-pub-XXXXX/XXXXX"
-    private let interstitialAdUnitID = "ca-app-pub-XXXXX/XXXXX"
+    private let appOpenAdUnitID = "ca-app-pub-XXXXX/XXXXX"
     #endif
     
     // 状態管理
@@ -58,13 +58,19 @@ class AdManager: NSObject, ObservableObject {
     /// 最初から出す。あとから急に現れるほうが「広告が増えた」と感じさせる。
     @Published private(set) var isInterstitialFree = true
 
-    private var interstitialAd: InterstitialAd?
+    private var appOpenAd: AppOpenAd?
+    /// 広告を読み込んだ時刻。アプリ起動広告は4時間で期限が切れる
+    private var appOpenAdLoadTime: Date?
+    private var isLoadingAppOpenAd = false
 
-    /// 全画面広告を出す処理の途中か
+    /// 全画面広告を表示中か
     ///
-    /// 起動時の呼び出しと、起動直後の復帰判定（scenePhase が .active になる）が
-    /// 重なって走るため。待っている間に2本目が判定を通ると、同じ日に2回出てしまう。
-    private var isShowingInterstitial = false
+    /// 起動時と復帰時の呼び出しが重なると、同じ日に2回出てしまうため。
+    private var isShowingAppOpenAd = false
+    /// 起動時の広告が閉じられるのを待つための継続
+    private var appOpenAdDismissContinuation: CheckedContinuation<Void, Never>?
+    /// バックグラウンドに入ったか。復帰時の広告は、ここから戻ってきたときだけ出す
+    private var didEnterBackground = false
 
     private override init() {
         super.init()
@@ -118,7 +124,7 @@ class AdManager: NSObject, ObservableObject {
         // バナーは AdBannerView が置かれた画面ごとに読み込む。
         // 全画面広告はお試し期間が明けてから。
         guard !isInterstitialFree else { return }
-        loadInterstitial()
+        loadAppOpenAd()
     }
 
     /// 購入が成立したときに呼ぶ。読み込み済みの広告を捨てる。
@@ -126,20 +132,43 @@ class AdManager: NSObject, ObservableObject {
     /// バナーは isAdsRemoved を見て各ビューが自分で消すので、ここでは触らない。
     @MainActor
     func discardLoadedAds() {
-        interstitialAd = nil
+        appOpenAd = nil
+        appOpenAdLoadTime = nil
         isAdsRemoved = true
         isInterstitialFree = true
     }
 
     // MARK: - 読み込み
 
+    // 全画面広告は「アプリ起動」広告を使う。
+    // インタースティシャル広告は画面の切れ目に出すもので、起動時や復帰時に出すのは
+    // AdMob のポリシーで禁止されている。起動時・復帰時に出すための形式がアプリ起動広告。
+    //
+    // 判定まわりの名前（isInterstitialFree / shouldShowInterstitial など）は
+    // 「全画面広告」の意味で残している。保存キーの値を変えると、既存ユーザーの
+    // 「今日は表示済み」の記録が引き継がれないため。
+
+    /// アプリ起動広告の有効期限（Google の指定で4時間）
+    private static let appOpenAdLifetime: TimeInterval = 4 * 3600
+
+    /// 読み込み済みで、期限が切れていない広告があるか
+    private var isAppOpenAdAvailable: Bool {
+        guard appOpenAd != nil, let loadTime = appOpenAdLoadTime else { return false }
+        return Date().timeIntervalSince(loadTime) < Self.appOpenAdLifetime
+    }
+
     @MainActor
-    private func loadInterstitial() {
-        InterstitialAd.load(with: interstitialAdUnitID, request: Request()) { [weak self] ad, error in
-            guard error == nil else { return }
+    private func loadAppOpenAd() {
+        guard !isLoadingAppOpenAd, !isAppOpenAdAvailable else { return }
+        isLoadingAppOpenAd = true
+        AppOpenAd.load(with: appOpenAdUnitID, request: Request()) { [weak self] ad, error in
             Task { @MainActor in
-                self?.interstitialAd = ad
-                self?.interstitialAd?.fullScreenContentDelegate = self
+                guard let self else { return }
+                self.isLoadingAppOpenAd = false
+                guard error == nil else { return }
+                self.appOpenAd = ad
+                self.appOpenAd?.fullScreenContentDelegate = self
+                self.appOpenAdLoadTime = Date()
             }
         }
     }
@@ -157,7 +186,22 @@ class AdManager: NSObject, ObservableObject {
         return await !PurchaseManager.shared.hasAdFree()
     }
     
-    // MARK: - Interstitial Ad
+    // MARK: - App Open Ad
+
+    /// いちばん手前に出ている画面（シートが開いていればシート）
+    ///
+    /// connectedScenes.first は並び順が保証されず、UIWindowScene とも限らない。
+    /// バナー側（BannerRepresentable）と同じ取り方に揃える。
+    @MainActor
+    private static func topViewController() -> UIViewController? {
+        var top = UIApplication.shared.connectedScenes
+            .compactMap({ ($0 as? UIWindowScene)?.keyWindow?.rootViewController })
+            .first
+        while let presented = top?.presentedViewController {
+            top = presented
+        }
+        return top
+    }
 
     /// 全画面広告を表示する
     ///
@@ -165,21 +209,27 @@ class AdManager: NSObject, ObservableObject {
     /// - Returns: 実際に表示したか
     @MainActor
     @discardableResult
-    func showInterstitialAd() async -> Bool {
+    private func presentAppOpenAd() async -> Bool {
         guard await shouldShowAds() else { return false }
+        // 購入状態の確認で待っている間に、別の経路で出ていることがあるので、そのあとで見る
+        guard !isShowingAppOpenAd else { return false }
 
-        // connectedScenes.first は並び順が保証されず、UIWindowScene とも限らない。
-        // バナー側（BannerRepresentable）と同じ取り方に揃える。
-        guard let root = UIApplication.shared.connectedScenes
-                .compactMap({ ($0 as? UIWindowScene)?.keyWindow?.rootViewController })
-                .first,
-              let ad = interstitialAd else { return false }
+        // 期限切れの広告は出さずに読み直す
+        guard isAppOpenAdAvailable, let ad = appOpenAd,
+              let root = Self.topViewController() else {
+            if appOpenAd != nil, !isAppOpenAdAvailable {
+                appOpenAd = nil
+                appOpenAdLoadTime = nil
+                loadAppOpenAd()
+            }
+            return false
+        }
 
+        isShowingAppOpenAd = true
         ad.present(from: root)
-        interstitialAd = nil  // 使い切ったので次を読み込む（delegateで再取得）
         return true
     }
-    
+
     // リワード広告は実装しない。
     //
     // 以前は「録音を使うにはリワード広告を見る」という設計のコードがあったが、
@@ -192,40 +242,88 @@ class AdManager: NSObject, ObservableObject {
 
     // MARK: - Event Handlers
 
-    /// 起動時に全画面広告を出す（1日1回まで）
+    /// 起動時の全画面広告の上限待ち時間
+    ///
+    /// これを過ぎたら広告は出さずに本編へ進む。待たせすぎると起動が遅いアプリになる。
+    static let launchAdWaitLimit: TimeInterval = 3
+
+    /// 起動時に読み込み画面を出して広告を待つか
+    ///
+    /// 起動の時点ですぐ分かる条件（お試し期間・今日表示済み・Debug）だけを見る。
+    /// 購入状態は確認が非同期なので showAppOpenAdOnLaunch の中で見る。
+    @MainActor
+    var shouldWaitForLaunchAd: Bool {
+        #if DEBUG
+        // Debug では広告を読まないので待つ意味がない
+        if PurchaseManager.unlockAllInDebug { return false }
+        #endif
+        return AppLaunchManager.shared.shouldShowInterstitial
+    }
+
+    /// 起動時に読み込み画面の裏で呼ぶ。広告が閉じられるまで戻らない（1日1回まで）
+    ///
+    /// Google のガイドでは、起動時のアプリ起動広告は読み込み画面の間に出し、
+    /// 本編の画面に入ったあとには出さない。そのため呼び出し側は、
+    /// この関数が戻るまで読み込み画面を出したままにする。
+    /// 決められた時間内に広告が読み込めなければ、出さずに戻る。
+    /// 読み込めなかった広告はそのまま残し、復帰時に使う。
     ///
     /// 再生の前後では出さない。
     /// Waveを続けて回したいときに毎回割り込まれると使い物にならないため。
     @MainActor
-    func onAppLaunch() async {
-        await showInterstitialIfNeeded()
-    }
+    func showAppOpenAdOnLaunch() async {
+        guard AppLaunchManager.shared.shouldShowInterstitial,
+              await shouldShowAds() else { return }
 
-    /// 復帰時（scenePhase が .active になったとき）に全画面広告を出す（1日1回まで）
-    ///
-    /// 起動時と回数を共有する。何度開いても広告は1日1回で済む。
-    @MainActor
-    func onAppResume() async {
-        await showInterstitialIfNeeded()
-    }
-
-    /// 起動時・復帰時の共通処理。条件を満たさなければ何もしない。
-    ///
-    /// 記録は実際に表示できたときだけ行う。
-    /// 起動直後の復帰判定は広告の読み込みより先に走るので、
-    /// 出せなかった回まで記録すると、その日の1回を出さないまま使い切ってしまう。
-    @MainActor
-    private func showInterstitialIfNeeded() async {
-        guard !isShowingInterstitial,
-              AppLaunchManager.shared.shouldShowInterstitial else { return }
-        isShowingInterstitial = true
-        defer { isShowingInterstitial = false }
-
-        // 起動直後は画面の描画と重なるので少し待つ
-        try? await Task.sleep(nanoseconds: 2_000_000_000)
+        let deadline = Date().addingTimeInterval(Self.launchAdWaitLimit)
+        while !isAppOpenAdAvailable && Date() < deadline {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
         // 待っている間に別の経路で出ていたら出さない
         guard AppLaunchManager.shared.shouldShowInterstitial else { return }
-        if await showInterstitialAd() {
+
+        // 記録は実際に表示できたときだけ行う。
+        // 出せなかった回まで記録すると、その日の1回を出さないまま使い切ってしまう。
+        guard await presentAppOpenAd() else { return }
+        AppLaunchManager.shared.recordInterstitialShown()
+
+        await withCheckedContinuation { continuation in
+            // 待っている間に閉じられていれば、すぐに戻る
+            if isShowingAppOpenAd {
+                appOpenAdDismissContinuation = continuation
+            } else {
+                continuation.resume()
+            }
+        }
+    }
+
+    /// scenePhase が変わったときに呼ぶ。バックグラウンドから戻ってきたときだけ広告を出す
+    ///
+    /// 起動直後の .active では出さない。起動時の広告は showAppOpenAdOnLaunch が受け持つ。
+    @MainActor
+    func handleScenePhase(_ phase: ScenePhase) async {
+        switch phase {
+        case .background:
+            didEnterBackground = true
+        case .active where didEnterBackground:
+            didEnterBackground = false
+            await onAppResume()
+        default:
+            break
+        }
+    }
+
+    /// 復帰時に全画面広告を出す（1日1回まで）
+    ///
+    /// 起動時と回数を共有する。何度開いても広告は1日1回で済む。
+    /// 読み込み済みでなければ出さない。
+    ///
+    /// 記録は実際に表示できたときだけ行う。
+    /// 出せなかった回まで記録すると、その日の1回を出さないまま使い切ってしまう。
+    @MainActor
+    func onAppResume() async {
+        guard AppLaunchManager.shared.shouldShowInterstitial else { return }
+        if await presentAppOpenAd() {
             AppLaunchManager.shared.recordInterstitialShown()
         }
     }
@@ -234,20 +332,31 @@ class AdManager: NSObject, ObservableObject {
 // MARK: - FullScreenContentDelegate
 
 extension AdManager: FullScreenContentDelegate {
-    /// 閉じられたら次の全画面広告を用意しておく
     nonisolated func adDidDismissFullScreenContent(_ ad: FullScreenPresentingAd) {
         Task { @MainActor in
-            guard !self.isInterstitialFree else { return }
-            self.loadInterstitial()
+            self.finishAppOpenAd()
         }
     }
 
     nonisolated func ad(_ ad: FullScreenPresentingAd,
                         didFailToPresentFullScreenContentWithError error: Error) {
         Task { @MainActor in
-            guard !self.isInterstitialFree else { return }
-            self.loadInterstitial()
+            self.finishAppOpenAd()
         }
+    }
+
+    /// 広告が閉じられた（または出せなかった）あとの片付け
+    @MainActor
+    private func finishAppOpenAd() {
+        isShowingAppOpenAd = false
+        appOpenAd = nil
+        appOpenAdLoadTime = nil
+        // 起動時の読み込み画面を閉じてよいと知らせる
+        appOpenAdDismissContinuation?.resume()
+        appOpenAdDismissContinuation = nil
+        // 次の全画面広告を用意しておく
+        guard !isInterstitialFree else { return }
+        loadAppOpenAd()
     }
 }
 

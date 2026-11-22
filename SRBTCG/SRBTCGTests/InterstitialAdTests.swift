@@ -2,7 +2,7 @@
 //  InterstitialAdTests.swift
 //  SRBTCGTests
 //
-//  全画面（インタースティシャル）広告を出すかどうかの判定を確かめる。
+//  全画面広告（アプリ起動広告）を出すかどうかの判定を確かめる。
 //
 //  判定は UserDefaults.standard を直接読むので、テストの前後で
 //  対象キーを退避・復元し、シミュレータ上のアプリの状態を汚さない。
@@ -79,7 +79,7 @@ final class InterstitialAdTests: XCTestCase {
 
     func testOnAppLaunchDuringTrialDoesNotRecord() async {
         setLaunchCount(AppLaunchManager.trialLaunches)
-        await AdManager.shared.onAppLaunch()
+        await AdManager.shared.showAppOpenAdOnLaunch()
         XCTAssertNil(recordedDate)
     }
 
@@ -100,13 +100,12 @@ final class InterstitialAdTests: XCTestCase {
     // MARK: - 表示できなかった回は記録しない
     //
     // 判定を通した状態で呼んでも、テスト環境では広告が出ないので日付は書かれないはず。
-    // 起動時・復帰時とも中で2秒待つため、それぞれ2秒ほどかかる。
 
     func testOnAppLaunchDoesNotRecordWhenAdIsNotShown() async {
         setLaunchCount(AppLaunchManager.trialLaunches + 1)
         XCTAssertTrue(AppLaunchManager.shared.shouldShowInterstitial)
 
-        await AdManager.shared.onAppLaunch()
+        await AdManager.shared.showAppOpenAdOnLaunch()
 
         XCTAssertNil(recordedDate, "表示していないのに表示済みとして記録された")
     }
